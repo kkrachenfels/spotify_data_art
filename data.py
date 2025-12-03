@@ -10,6 +10,7 @@ Run: `FLASK_APP=data.py flask run` from the `spotify_data_art` folder.
 """)
 import base64
 import csv
+import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -164,6 +165,26 @@ def _save_liked_to_csv(items, filename="liked_tracks.csv"):
 		writer.writerows(items)
 
 	print(f"Saved {len(items)} liked tracks to {filename}")
+	_save_range_metadata(items)
+
+
+def _save_range_metadata(items, filename="liked_tracks_range.json"):
+	"""
+	Store earliest and latest added_at timestamps alongside the CSV.
+	"""
+	dates = [item.get('added_at') for item in items if item.get('added_at')]
+	if dates:
+		earliest = min(dates)
+		latest = max(dates)
+	else:
+		earliest = None
+		latest = None
+	meta = {
+		'earliest': earliest,
+		'latest': latest
+	}
+	with open(filename, 'w', encoding='utf-8') as f:
+		json.dump(meta, f)
 
 
 def _refresh_token():
