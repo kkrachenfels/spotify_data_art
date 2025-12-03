@@ -9,6 +9,7 @@ Environment variables required:
 Run: `FLASK_APP=data.py flask run` from the `spotify_data_art` folder.
 """)
 import base64
+import csv  # <-- add this
 import os
 import time
 
@@ -44,6 +45,59 @@ def _is_token_expired():
 	if not expires_at:
 		return True
 	return time.time() > expires_at
+
+def _fetch_all_liked_tracks(headers):
+	"""
+	Fetch all saved tracks (liked songs) for the current user.
+	Uses Spotify's pagination over /me/tracks.
+	"""
+	items = []
+	url = f"{API_BASE}/me/tracks"
+	params = {'limit': 50}  # max allowed by Spotify
+
+	while url:
+		r = requests.get(url, headers=headers, params=params)
+		if r.status_code != 200:
+			print("Failed to fetch liked tracks:", r.status_code, r.text)
+			break
+
+		data = r.json()
+		for it in data.get('items', []):
+			track = it.get('track', {})
+			artists = ', '.join([a.get('name') for a in track.get('artists', [])])
+			album_images = track.get('album', {}).get('images', [])
+			album_image = album_images[0]['url'] if album_images else None
+
+			items.append({
+				'name': track.get('name'),
+				'artists': artists,
+				'album': track.get('album', {}).get('name'),
+				'album_image': album_image,
+				'external_url': track.get('external_urls', {}).get('spotify'),
+				'added_at': it.get('added_at')
+			})
+
+		# Spotify gives a full URL for the next page, or None
+		url = data.get('next')
+		# params should be None when using the absolute 'next' URL
+		params = None
+
+	# sort by added_at (Spotify returns ISO 8601, so string sort is fine)
+	items.sort(key=lambda x: x['added_at'] or '')
+	return items
+
+
+def _save_liked_to_csv(items, filename="liked_tracks.csv"):
+	"""
+	Save liked tracks to a CSV file in the current folder.
+	"""
+	fieldnames = ['name', 'artists', 'album', 'album_image', 'external_url', 'added_at']
+	with open(filename, 'w', newline='', encoding='utf-8') as f:
+		writer = csv.DictWriter(f, fieldnames=fieldnames)
+		writer.writeheader()
+		writer.writerows(items)
+
+	print(f"Saved {len(items)} liked tracks to {filename}")
 
 
 def _refresh_token():
@@ -98,6 +152,7 @@ def callback():
 		return f'Error: {error}'
 	if not code:
 		return 'No code provided', 400
+
 	payload = {
 		'grant_type': 'authorization_code',
 		'code': code,
@@ -108,11 +163,19 @@ def callback():
 	r = requests.post(TOKEN_URL, data=payload, headers=headers)
 	if r.status_code != 200:
 		return f'Token exchange failed: {r.text}', 500
+
 	tok = r.json()
 	session['access_token'] = tok.get('access_token')
 	session['refresh_token'] = tok.get('refresh_token')
 	expires_in = tok.get('expires_in', 3600)
 	session['expires_at'] = time.time() + int(expires_in)
+
+	# fetch all liked tracks immediately on login and save to CSV
+	api_headers = _auth_header()
+	if api_headers:
+		all_liked = _fetch_all_liked_tracks(api_headers)
+		_save_liked_to_csv(all_liked)  # writes liked_tracks.csv in this folder
+
 	return redirect('/')
 
 
