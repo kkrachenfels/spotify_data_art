@@ -1,5 +1,6 @@
 config.py
 __pycache__/
 liked_tracks.csv
-liked_tracks_range.jsontop_tracks.csv
+liked_tracks_range.json
+top_tracks.csv
 top_tracks_range.json
