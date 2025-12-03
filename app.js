@@ -258,7 +258,7 @@ function renderSongList(tracks) {
 function prepareSpiralSegments(tracks, colors) {
   const center = SPIRAL_SIZE / 2;
   const baseRadius = 10;
-  const radiusScale = 22;
+  const radiusScale = 16;
   const thetaStep = Math.PI / 2.45;
   const resolution = 0.05;
   return tracks.map((track, index) => {
@@ -292,7 +292,7 @@ function createSpiralSketch(container) {
   }
   spiralInstance = new p5((p) => {
     p.setup = () => {
-      const canvas = p.createCanvas(SPIRAL_SIZE, SPIRAL_SIZE);
+      const canvas = p.createCanvas(SPIRAL_SIZE * 1.5, SPIRAL_SIZE * 1.5);
       canvas.parent(container);
       canvas.position(0, 0);
       canvas.style("display", "block");
