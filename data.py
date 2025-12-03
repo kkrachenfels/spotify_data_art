@@ -1,0 +1,159 @@
+("""Simple Flask backend to authenticate with Spotify and return user's saved tracks.
+
+Environment variables required:
+- SPOTIFY_CLIENT_ID
+- SPOTIFY_CLIENT_SECRET
+- SPOTIFY_REDIRECT_URI (optional, defaults to http://localhost:8080)
+- FLASK_SECRET_KEY (optional)
+
+Run: `FLASK_APP=data.py flask run` from the `spotify_data_art` folder.
+""")
+import base64
+import os
+import time
+
+import requests
+from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI
+from flask import (Flask, jsonify, redirect, request, send_from_directory,
+                   session)
+
+app = Flask(__name__, static_folder='.', static_url_path='')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
+
+SPOTIFY_CLIENT_ID = CLIENT_ID
+SPOTIFY_CLIENT_SECRET = CLIENT_SECRET
+REDIRECT_URI = REDIRECT_URI
+SCOPE = 'user-library-read'
+
+AUTH_URL = 'https://accounts.spotify.com/authorize'
+TOKEN_URL = 'https://accounts.spotify.com/api/token'
+API_BASE = 'https://api.spotify.com/v1'
+
+
+def _auth_header():
+	token = session.get('access_token')
+	if not token:
+		return None
+	return {'Authorization': f'Bearer {token}'}
+
+
+def _is_token_expired():
+	expires_at = session.get('expires_at')
+	if not expires_at:
+		return True
+	return time.time() > expires_at
+
+
+def _refresh_token():
+	refresh_token = session.get('refresh_token')
+	if not refresh_token:
+		return False
+	payload = {
+		'grant_type': 'refresh_token',
+		'refresh_token': refresh_token,
+	}
+	auth = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
+	headers = {'Authorization': f'Basic {auth}'}
+	r = requests.post(TOKEN_URL, data=payload, headers=headers)
+	if r.status_code != 200:
+		return False
+	tok = r.json()
+	session['access_token'] = tok.get('access_token')
+	expires_in = tok.get('expires_in', 3600)
+	session['expires_at'] = time.time() + int(expires_in)
+	# Spotify may or may not return a new refresh token
+	if tok.get('refresh_token'):
+		session['refresh_token'] = tok.get('refresh_token')
+	return True
+
+
+@app.route('/')
+def index():
+	# serve the static index.html in this folder
+	return send_from_directory('.', 'index.html')
+
+
+@app.route('/login')
+def login():
+	if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+		return 'Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET', 500
+	params = {
+		'client_id': SPOTIFY_CLIENT_ID,
+		'response_type': 'code',
+		'redirect_uri': REDIRECT_URI,
+		'scope': SCOPE,
+		'show_dialog': 'true'
+	}
+	url = requests.Request('GET', AUTH_URL, params=params).prepare().url
+	return redirect(url)
+
+
+@app.route('/callback')
+def callback():
+	code = request.args.get('code')
+	error = request.args.get('error')
+	if error:
+		return f'Error: {error}'
+	if not code:
+		return 'No code provided', 400
+	payload = {
+		'grant_type': 'authorization_code',
+		'code': code,
+		'redirect_uri': REDIRECT_URI,
+	}
+	auth = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
+	headers = {'Authorization': f'Basic {auth}'}
+	r = requests.post(TOKEN_URL, data=payload, headers=headers)
+	if r.status_code != 200:
+		return f'Token exchange failed: {r.text}', 500
+	tok = r.json()
+	session['access_token'] = tok.get('access_token')
+	session['refresh_token'] = tok.get('refresh_token')
+	expires_in = tok.get('expires_in', 3600)
+	session['expires_at'] = time.time() + int(expires_in)
+	return redirect('/')
+
+
+@app.route('/liked')
+def liked():
+	# return the user's 10 saved tracks (liked songs)
+	if 'access_token' not in session:
+		return jsonify({'error': 'not_authenticated'}), 401
+	if _is_token_expired():
+		ok = _refresh_token()
+		if not ok:
+			return jsonify({'error': 'token_refresh_failed'}), 401
+	headers = _auth_header()
+	if not headers:
+		return jsonify({'error': 'not_authenticated'}), 401
+	params = {'limit': 10}
+	r = requests.get(f"{API_BASE}/me/tracks", headers=headers, params=params)
+	if r.status_code != 200:
+		return jsonify({'error': 'spotify_api_failed', 'details': r.text}), r.status_code
+	data = r.json()
+	items = []
+	for it in data.get('items', []):
+		track = it.get('track', {})
+		artists = ', '.join([a.get('name') for a in track.get('artists', [])])
+		album_images = track.get('album', {}).get('images', [])
+		album_image = album_images[0]['url'] if album_images else None
+		items.append({
+			'name': track.get('name'),
+			'artists': artists,
+			'album': track.get('album', {}).get('name'),
+			'album_image': album_image,
+			'external_url': track.get('external_urls', {}).get('spotify'),
+			'added_at': it.get('added_at')
+		})
+	return jsonify({'items': items})
+
+
+@app.route('/logout')
+def logout():
+	session.clear()
+	return redirect('/')
+
+
+if __name__ == '__main__':
+	app.run(debug=True, host='0.0.0.0', port=8080)
+
