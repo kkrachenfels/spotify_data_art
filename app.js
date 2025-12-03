@@ -68,6 +68,8 @@ const endRange = el("input", {
   disabled: true,
 });
 let likedTracks = [];
+const colorCache = new Map();
+const DEFAULT_SWATCH_COLOR = "#555";
 const applyRangeBtn = el(
   "button",
   { id: "apply-range", onclick: applyCurrentRange },
@@ -168,20 +170,6 @@ function fetchLiked() {
     });
 }
 
-function handleSliderInput(isStart) {
-  if (!likedTracks.length) {
-    return;
-  }
-  const startValue = Number(startRange.value);
-  const endValue = Number(endRange.value);
-  if (isStart && startValue > endValue) {
-    endRange.value = startValue;
-  } else if (!isStart && endValue < startValue) {
-    startRange.value = endValue;
-  }
-  displayFilteredTracks();
-}
-
 function applyCurrentRange() {
   if (!likedTracks.length) {
     rangeStatus.textContent = "Load liked songs before applying a date filter.";
@@ -228,9 +216,7 @@ function renderSongList(tracks) {
   const ul = document.createElement("ul");
   tracks.forEach((item) => {
     const li = document.createElement("li");
-    const img = item.album_image
-      ? el("img", { src: item.album_image, width: 64, height: 64 })
-      : null;
+    const swatch = createColorSwatch(item.album_image);
     const title = el("strong", {}, item.name);
     const meta = document.createElement("div");
     meta.appendChild(
@@ -245,13 +231,92 @@ function renderSongList(tracks) {
       meta.appendChild(document.createTextNode(" "));
       meta.appendChild(a);
     }
-    if (img) li.appendChild(img);
+    if (swatch) li.appendChild(swatch);
     li.appendChild(title);
     li.appendChild(document.createElement("br"));
     li.appendChild(meta);
     ul.appendChild(li);
   });
   list.appendChild(ul);
+}
+
+function createColorSwatch(imageUrl) {
+  const swatch = el("span", { class: "color-swatch" });
+  swatch.style.width = "64px";
+  swatch.style.height = "64px";
+  swatch.style.display = "inline-block";
+  swatch.style.borderRadius = "6px";
+  swatch.style.marginRight = "12px";
+  swatch.style.border = "1px solid #ccc";
+  swatch.style.backgroundColor = DEFAULT_SWATCH_COLOR;
+  if (imageUrl) {
+    applyColorToSwatch(imageUrl, swatch);
+  }
+  return swatch;
+}
+
+function applyColorToSwatch(imageUrl, swatch) {
+  getProminentColor(imageUrl).then((color) => {
+    if (color) {
+      swatch.style.backgroundColor = color;
+    }
+  });
+}
+
+function getProminentColor(imageUrl) {
+  if (!imageUrl) {
+    return Promise.resolve(null);
+  }
+  if (colorCache.has(imageUrl)) {
+    return Promise.resolve(colorCache.get(imageUrl));
+  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    const size = 32;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        colorCache.set(imageUrl, null);
+        resolve(null);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, size, size);
+      const data = ctx.getImageData(0, 0, size, size).data;
+      let r = 0,
+        g = 0,
+        b = 0,
+        count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const alpha = data[i + 3];
+        if (alpha < 40) {
+          continue;
+        }
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        count += 1;
+      }
+      if (!count) {
+        colorCache.set(imageUrl, null);
+        resolve(null);
+        return;
+      }
+      const color = `rgb(${Math.round(r / count)}, ${Math.round(
+        g / count
+      )}, ${Math.round(b / count)})`;
+      colorCache.set(imageUrl, color);
+      resolve(color);
+    };
+    img.onerror = () => {
+      colorCache.set(imageUrl, null);
+      resolve(null);
+    };
+    img.src = imageUrl;
+  });
 }
 
 function formatDateValue(value) {
