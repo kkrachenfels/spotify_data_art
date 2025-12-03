@@ -123,6 +123,7 @@ const SPIRAL_SIZE = 420;
 let spiralInstance = null;
 let spiralSegments = [];
 let spiralTooltip = null;
+let spiralDrawingCtx = null;
 
 root.appendChild(header);
 root.appendChild(info);
@@ -238,6 +239,7 @@ function renderSongList(tracks) {
   spiralTooltip.style.fontSize = "0.85rem";
   spiralTooltip.style.display = "none";
   spiralTooltip.style.maxWidth = "220px";
+  spiralTooltip.style.zIndex = "100";
   container.appendChild(spiralTooltip);
 
   const colorPromises = tracks.map((item) =>
@@ -249,6 +251,7 @@ function renderSongList(tracks) {
   Promise.all(colorPromises).then((colors) => {
     spiralSegments = prepareSpiralSegments(tracks, colors);
     createSpiralSketch(container);
+    container.appendChild(spiralTooltip);
   });
 }
 
@@ -262,16 +265,23 @@ function prepareSpiralSegments(tracks, colors) {
     const startTheta = index * thetaStep;
     const endTheta = startTheta + thetaStep;
     const points = [];
+    const path = new Path2D();
     for (let theta = startTheta; theta <= endTheta + resolution; theta += resolution) {
       const r = baseRadius + radiusScale * theta;
       const x = center + r * Math.cos(theta);
       const y = center + r * Math.sin(theta);
+      if (points.length === 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
       points.push({ x, y });
     }
     return {
       track,
       color: colors[index],
       points,
+      path,
     };
   });
 }
@@ -287,6 +297,16 @@ function createSpiralSketch(container) {
       canvas.position(0, 0);
       canvas.style("display", "block");
       const canvasElement = canvas.elt;
+      canvasElement.style.position = "absolute";
+      canvasElement.style.top = "0";
+      canvasElement.style.left = "0";
+      canvasElement.style.zIndex = "1";
+      spiralDrawingCtx = canvasElement.getContext("2d");
+      if (spiralDrawingCtx) {
+        spiralDrawingCtx.lineWidth = 36;
+        spiralDrawingCtx.lineCap = "round";
+        spiralDrawingCtx.lineJoin = "round";
+      }
       canvasElement.addEventListener("mousemove", (event) => {
         const rect = canvasElement.getBoundingClientRect();
         const scaleX = canvas.elt.width / rect.width;
@@ -295,6 +315,7 @@ function createSpiralSketch(container) {
         const y = (event.clientY - rect.top) * scaleY;
         const hovered = findSegmentNear(x, y);
         if (hovered) {
+          console.log("hover segment", hovered.track.name, hovered.track.artists);
           updateTooltip(hovered.track, x, y, container);
         } else {
           hideTooltip();
@@ -325,6 +346,11 @@ function createSpiralSketch(container) {
 const HOVER_DISTANCE = 20;
 
 function findSegmentNear(x, y) {
+  if (spiralDrawingCtx && spiralSegments.length) {
+    return spiralSegments.find((segment) =>
+      spiralDrawingCtx.isPointInStroke(segment.path, x, y)
+    );
+  }
   const thresholdSq = HOVER_DISTANCE * HOVER_DISTANCE;
   return spiralSegments.find((segment) =>
     segment.points.some((point) => {
