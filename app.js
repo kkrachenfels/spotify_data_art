@@ -119,6 +119,11 @@ const rangeStatus = el(
   "Load liked songs to enable the date range filter."
 );
 
+const SPIRAL_SIZE = 420;
+let spiralInstance = null;
+let spiralSegments = [];
+let spiralTooltip = null;
+
 root.appendChild(header);
 root.appendChild(info);
 root.appendChild(loginBtn);
@@ -213,54 +218,150 @@ function renderSongList(tracks) {
     list.innerHTML = "No liked songs in that range.";
     return;
   }
-  const ul = document.createElement("ul");
-  tracks.forEach((item) => {
-    const li = document.createElement("li");
-    const swatch = createColorSwatch(item.album_image);
-    const title = el("strong", {}, item.name);
-    const meta = document.createElement("div");
-    meta.appendChild(
-      document.createTextNode(item.artists + " — " + item.album)
-    );
-    if (item.external_url) {
-      const a = el(
-        "a",
-        { href: item.external_url, target: "_blank" },
-        "Open on Spotify"
-      );
-      meta.appendChild(document.createTextNode(" "));
-      meta.appendChild(a);
-    }
-    if (swatch) li.appendChild(swatch);
-    li.appendChild(title);
-    li.appendChild(document.createElement("br"));
-    li.appendChild(meta);
-    ul.appendChild(li);
+  const container = el("div", { class: "spiral-canvas-container" });
+  container.style.position = "relative";
+  container.style.width = `${SPIRAL_SIZE}px`;
+  container.style.height = `${SPIRAL_SIZE}px`;
+  container.style.margin = "16px auto";
+  container.style.border = "1px solid #eee";
+  container.style.borderRadius = "12px";
+  container.style.backgroundColor = "#fff";
+  list.appendChild(container);
+
+  spiralTooltip = el("div", { class: "spiral-tooltip" });
+  spiralTooltip.style.position = "absolute";
+  spiralTooltip.style.pointerEvents = "none";
+  spiralTooltip.style.padding = "10px 12px";
+  spiralTooltip.style.borderRadius = "6px";
+  spiralTooltip.style.background = "rgba(0, 0, 0, 0.75)";
+  spiralTooltip.style.color = "#fff";
+  spiralTooltip.style.fontSize = "0.85rem";
+  spiralTooltip.style.display = "none";
+  spiralTooltip.style.maxWidth = "220px";
+  container.appendChild(spiralTooltip);
+
+  const colorPromises = tracks.map((item) =>
+    getProminentColor(item.album_image).then(
+      (color) => color || DEFAULT_SWATCH_COLOR
+    )
+  );
+
+  Promise.all(colorPromises).then((colors) => {
+    spiralSegments = prepareSpiralSegments(tracks, colors);
+    createSpiralSketch(container);
   });
-  list.appendChild(ul);
 }
 
-function createColorSwatch(imageUrl) {
-  const swatch = el("span", { class: "color-swatch" });
-  swatch.style.width = "64px";
-  swatch.style.height = "64px";
-  swatch.style.display = "inline-block";
-  swatch.style.borderRadius = "6px";
-  swatch.style.marginRight = "12px";
-  swatch.style.border = "1px solid #ccc";
-  swatch.style.backgroundColor = DEFAULT_SWATCH_COLOR;
-  if (imageUrl) {
-    applyColorToSwatch(imageUrl, swatch);
+function prepareSpiralSegments(tracks, colors) {
+  const center = SPIRAL_SIZE / 2;
+  const baseRadius = 10;
+  const radiusScale = 22;
+  const thetaStep = Math.PI / 2.45;
+  const resolution = 0.05;
+  return tracks.map((track, index) => {
+    const startTheta = index * thetaStep;
+    const endTheta = startTheta + thetaStep;
+    const points = [];
+    for (let theta = startTheta; theta <= endTheta + resolution; theta += resolution) {
+      const r = baseRadius + radiusScale * theta;
+      const x = center + r * Math.cos(theta);
+      const y = center + r * Math.sin(theta);
+      points.push({ x, y });
+    }
+    return {
+      track,
+      color: colors[index],
+      points,
+    };
+  });
+}
+
+function createSpiralSketch(container) {
+  if (spiralInstance) {
+    spiralInstance.remove();
   }
-  return swatch;
+  spiralInstance = new p5((p) => {
+    p.setup = () => {
+      const canvas = p.createCanvas(SPIRAL_SIZE, SPIRAL_SIZE);
+      canvas.parent(container);
+      canvas.position(0, 0);
+      canvas.style("display", "block");
+      const canvasElement = canvas.elt;
+      canvasElement.addEventListener("mousemove", (event) => {
+        const rect = canvasElement.getBoundingClientRect();
+        const scaleX = canvas.elt.width / rect.width;
+        const scaleY = canvas.elt.height / rect.height;
+        const x = (event.clientX - rect.left) * scaleX;
+        const y = (event.clientY - rect.top) * scaleY;
+        const hovered = findSegmentNear(x, y);
+        if (hovered) {
+          updateTooltip(hovered.track, x, y, container);
+        } else {
+          hideTooltip();
+        }
+      });
+      canvasElement.addEventListener("mouseleave", () => {
+        hideTooltip();
+      });
+    };
+    p.draw = () => {
+      p.background(255);
+      p.strokeWeight(36);
+      p.strokeCap(p.ROUND);
+      p.strokeJoin(p.ROUND);
+      p.noFill();
+      spiralSegments.forEach((segment) => {
+        p.stroke(segment.color);
+        p.beginShape();
+        segment.points.forEach((point) => {
+          p.vertex(point.x, point.y);
+        });
+        p.endShape();
+      });
+    };
+  });
 }
 
-function applyColorToSwatch(imageUrl, swatch) {
-  getProminentColor(imageUrl).then((color) => {
-    if (color) {
-      swatch.style.backgroundColor = color;
-    }
-  });
+const HOVER_DISTANCE = 20;
+
+function findSegmentNear(x, y) {
+  const thresholdSq = HOVER_DISTANCE * HOVER_DISTANCE;
+  return spiralSegments.find((segment) =>
+    segment.points.some((point) => {
+      const dx = point.x - x;
+      const dy = point.y - y;
+      return dx * dx + dy * dy <= thresholdSq;
+    })
+  );
+}
+
+function updateTooltip(track, x, y, container) {
+  if (!spiralTooltip) {
+    return;
+  }
+  const content = `<strong>${track.name}</strong><br>${track.artists}<br><em>${track.album}</em>`;
+  spiralTooltip.innerHTML = content;
+  spiralTooltip.style.display = "block";
+  const tooltipWidth = spiralTooltip.offsetWidth;
+  const tooltipHeight = spiralTooltip.offsetHeight;
+  const offsetX = 12;
+  const offsetY = -tooltipHeight - 8;
+  const left = Math.min(
+    Math.max(x + offsetX, 8),
+    SPIRAL_SIZE - tooltipWidth - 8
+  );
+  const top = Math.max(
+    Math.min(y + offsetY, SPIRAL_SIZE - tooltipHeight - 8),
+    8
+  );
+  spiralTooltip.style.left = `${left}px`;
+  spiralTooltip.style.top = `${top}px`;
+}
+
+function hideTooltip() {
+  if (spiralTooltip) {
+    spiralTooltip.style.display = "none";
+  }
 }
 
 function getProminentColor(imageUrl) {
