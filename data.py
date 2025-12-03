@@ -302,6 +302,8 @@ def liked():
 @app.route('/logout')
 def logout():
 	session.clear()
+	os.remove("liked_tracks.csv")
+	os.remove("liked_tracks_range.json")
 	return redirect('/')
 
 
