@@ -1,4 +1,5 @@
-// Simple frontend UI to prompt login and list liked songs from backend
+// Frontend for Spotify Top Tracks (rank-based). Keeps your Path2D + isPointInStroke spiral.
+
 function el(tag, props = {}, ...children) {
   const e = document.createElement(tag);
   Object.entries(props).forEach(([k, v]) => {
@@ -21,53 +22,51 @@ const root =
     return d;
   })();
 
-const header = el("h2", {}, "Spotify: Your 10 Liked Songs");
+const header = el("h2", {}, "Spotify: Your Top Tracks");
 const info = el(
   "p",
   {},
-  'Click "Login with Spotify" to connect your account, then load liked songs and use the date range slider below.'
+  'Click "Login with Spotify" to connect your account, then load your top tracks and use the rank slider below.'
 );
 const loginBtn = el(
   "button",
-  {
-    onclick: () => {
-      window.location = "/login";
-    },
-  },
+  { onclick: () => (window.location = "/login") },
   "Login with Spotify"
 );
-const loadBtn = el("button", { onclick: fetchLiked }, "Load Liked Songs");
+const loadBtn = el("button", { onclick: fetchTop }, "Load Top Tracks");
 const logoutBtn = el(
   "button",
-  {
-    onclick: () => {
-      window.location = "/logout";
-    },
-  },
+  { onclick: () => (window.location = "/logout") },
   "Logout"
 );
+
 const list = el("div", { id: "liked-list" });
-const CSV_URL = "/liked_tracks.csv";
-const RANGE_META_URL = "/liked_tracks_range.json";
-const startDateDisplay = el("span", { class: "date-value" }, "Start: —");
-const endDateDisplay = el("span", { class: "date-value" }, "End: —");
+
+// Top Tracks artifacts written by backend on login
+const CSV_URL = "/top_tracks.csv";
+const RANGE_META_URL = "/top_tracks_range.json";
+
+// Rank-based UI (no dates)
+const startLabel = el("span", { class: "date-value" }, "From rank: —");
+const endLabel = el("span", { class: "date-value" }, "To rank: —");
 const startRange = el("input", {
   type: "range",
   id: "start-range",
-  min: 0,
-  max: 0,
-  value: 0,
+  min: 1,
+  max: 1,
+  value: 1,
   disabled: true,
 });
 const endRange = el("input", {
   type: "range",
   id: "end-range",
-  min: 0,
-  max: 0,
-  value: 0,
+  min: 1,
+  max: 1,
+  value: 1,
   disabled: true,
 });
-let likedTracks = [];
+
+let topTracks = [];
 const colorCache = new Map();
 const DEFAULT_SWATCH_COLOR = "#555";
 const applyRangeBtn = el(
@@ -76,39 +75,37 @@ const applyRangeBtn = el(
   "Update filter"
 );
 const SONG_DISPLAY_LIMIT = 10;
+
 startRange.addEventListener("input", () => ensureRangeOrder(true));
 endRange.addEventListener("input", () => ensureRangeOrder(false));
-
 function ensureRangeOrder(isStart) {
-  const startValue = Number(startRange.value);
-  const endValue = Number(endRange.value);
-  if (isStart && startValue > endValue) {
-    endRange.value = startValue;
-  } else if (!isStart && endValue < startValue) {
-    startRange.value = endValue;
-  }
+  const s = Number(startRange.value);
+  const e = Number(endRange.value);
+  if (isStart && s > e) endRange.value = s;
+  else if (!isStart && e < s) startRange.value = e;
 }
+
 const filterSection = el(
   "section",
   { id: "date-filter" },
-  el("h3", {}, "Filter liked songs by date range"),
+  el("h3", {}, "Filter top tracks by rank"),
   el(
     "p",
     { class: "filter-hint" },
-    "Choose a start and end date to show the first 10 liked songs saved in that window."
+    'Choose a rank range, then click "Update filter" to show the first 10 tracks in that window.'
   ),
   el(
     "div",
     { class: "slider-control" },
     el("label", { for: "start-range" }, "From"),
-    startDateDisplay,
+    startLabel,
     startRange
   ),
   el(
     "div",
     { class: "slider-control" },
     el("label", { for: "end-range" }, "To"),
-    endDateDisplay,
+    endLabel,
     endRange
   ),
   applyRangeBtn
@@ -116,14 +113,16 @@ const filterSection = el(
 const rangeStatus = el(
   "p",
   { id: "range-status" },
-  "Load liked songs to enable the date range filter."
+  "Load top tracks to enable the rank filter."
 );
 
 const SPIRAL_SIZE = 420;
 let spiralInstance = null;
 let spiralSegments = [];
 let spiralTooltip = null;
-let spiralDrawingCtx = null;
+let spiralDrawingCtx = null; // used for isPointInStroke
+let hoveredIndex = -1;
+const BASE_STROKE = 36;
 
 root.appendChild(header);
 root.appendChild(info);
@@ -134,91 +133,88 @@ root.appendChild(list);
 root.insertBefore(filterSection, list);
 root.insertBefore(rangeStatus, list);
 
-function fetchLiked() {
-  list.innerHTML = "Loading liked songs...";
-  rangeStatus.textContent = "Loading liked tracks from liked_tracks.csv...";
-  const csvPromise = fetch(CSV_URL, { cache: "no-store" })
+// ------------ LOAD TOP TRACKS ------------
+function fetchTop() {
+  list.innerHTML = "Loading top tracks...";
+  rangeStatus.textContent = "Loading from top_tracks.csv...";
+
+  fetch(CSV_URL, { cache: "no-store" })
     .then(async (response) => {
-      if (!response.ok) {
-        throw new Error(
-          response.statusText || "liked_tracks.csv not available"
-        );
-      }
+      if (!response.ok)
+        throw new Error(response.statusText || "top_tracks.csv not available");
       const text = await response.text();
       return processTracksFromCsv(text);
     })
-    .then((tracks) => tracks.sort((a, b) => a.added_ms - b.added_ms));
+    .then((tracks) => {
+      topTracks = tracks
+        .map((t) => ({ ...t, rank: Number(t.rank) }))
+        .filter((t) => Number.isFinite(t.rank))
+        .sort((a, b) => a.rank - b.rank);
 
-  const metaPromise = fetchRangeMetadata();
-
-  Promise.all([csvPromise, metaPromise])
-    .then(([tracks, rangeMeta]) => {
-      likedTracks = tracks;
-      if (!likedTracks.length) {
-        list.innerHTML = "No liked songs saved yet.";
-        rangeStatus.textContent =
-          "The liked_tracks.csv file does not contain any songs yet.";
+      if (!topTracks.length) {
+        list.innerHTML = "No top tracks available.";
         startRange.disabled = true;
         endRange.disabled = true;
         return;
       }
 
-      applyRangeMeta(rangeMeta);
-      rangeStatus.textContent = `Loaded ${likedTracks.length} liked songs. Adjust the sliders and click "Update filter" to narrow the date range.`;
-      displayFilteredTracks();
+      return fetchRangeMetadata().then((meta) => {
+        applyRankMeta(meta);
+        rangeStatus.textContent = `Loaded ${topTracks.length} top tracks. Adjust ranks and click "Update filter".`;
+        displayFilteredTracks();
+      });
     })
     .catch((err) => {
-      list.innerHTML = "Failed to load liked songs: " + err;
+      list.innerHTML = "Failed to load top tracks: " + err;
       rangeStatus.textContent =
-        "Please log in, refresh liked tracks, and try again.";
+        "Please log in, refresh top tracks, and try again.";
       startRange.disabled = true;
       endRange.disabled = true;
     });
 }
 
+// ------------ FILTERING ------------
 function applyCurrentRange() {
-  if (!likedTracks.length) {
-    rangeStatus.textContent = "Load liked songs before applying a date filter.";
+  if (!topTracks.length) {
+    rangeStatus.textContent = "Load top tracks before applying a rank filter.";
     return;
   }
-  // Make sure sliders aren't crossing in a weird way
   ensureRangeOrder(true);
   displayFilteredTracks();
 }
 
 function displayFilteredTracks() {
-  if (!likedTracks.length) {
-    list.innerHTML = "No liked songs loaded.";
+  if (!topTracks.length) {
+    list.innerHTML = "No tracks loaded.";
     return;
   }
-  const startValue = Number(startRange.value);
-  const endValue = Number(endRange.value);
-  const rangeStart = Math.min(startValue, endValue);
-  const rangeEnd = Math.max(startValue, endValue);
-  const filtered = likedTracks.filter(
-    (track) => track.added_ms >= rangeStart && track.added_ms <= rangeEnd
-  );
+  const s = Number(startRange.value);
+  const e = Number(endRange.value);
+  const lo = Math.min(s, e);
+  const hi = Math.max(s, e);
+  const filtered = topTracks.filter((t) => t.rank >= lo && t.rank <= hi);
   renderSongList(filtered.slice(0, SONG_DISPLAY_LIMIT));
-  const startText = formatDateValue(rangeStart);
-  const endText = formatDateValue(rangeEnd);
+
   if (filtered.length === 0) {
-    rangeStatus.textContent = `No liked songs between ${startText} and ${endText}.`;
+    rangeStatus.textContent = `No tracks between ranks ${lo} and ${hi}.`;
   } else {
     rangeStatus.textContent = `Showing ${Math.min(
       filtered.length,
       SONG_DISPLAY_LIMIT
-    )} of ${filtered.length} liked songs between ${startText} and ${endText}.`;
+    )} of ${filtered.length} tracks between ranks ${lo} and ${hi}.`;
   }
-  startDateDisplay.textContent = `Start: ${startText}`;
-  endDateDisplay.textContent = `End: ${endText}`;
+  startLabel.textContent = `From rank: ${lo}`;
+  endLabel.textContent = `To rank: ${hi}`;
 }
 
+// ------------ SPIRAL (Path2D + hover) ------------
 function renderSongList(tracks) {
   list.innerHTML = "";
   if (!tracks.length) {
-    list.innerHTML = "No liked songs in that range.";
+    list.innerHTML = "No tracks in that rank range.";
     return;
   }
+
   const container = el("div", { class: "spiral-canvas-container" });
   container.style.position = "relative";
   container.style.width = `${SPIRAL_SIZE}px`;
@@ -261,22 +257,26 @@ function prepareSpiralSegments(tracks, colors) {
   const radiusScale = 16;
   const thetaStep = Math.PI / 2.45;
   const resolution = 0.05;
+
   return tracks.map((track, index) => {
     const startTheta = index * thetaStep;
     const endTheta = startTheta + thetaStep;
     const points = [];
     const path = new Path2D();
-    for (let theta = startTheta; theta <= endTheta + resolution; theta += resolution) {
+
+    for (
+      let theta = startTheta;
+      theta <= endTheta + resolution;
+      theta += resolution
+    ) {
       const r = baseRadius + radiusScale * theta;
       const x = center + r * Math.cos(theta);
       const y = center + r * Math.sin(theta);
-      if (points.length === 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
+      if (points.length === 0) path.moveTo(x, y);
+      else path.lineTo(x, y);
       points.push({ x, y });
     }
+
     return {
       track,
       color: colors[index],
@@ -301,12 +301,15 @@ function createSpiralSketch(container) {
       canvasElement.style.top = "0";
       canvasElement.style.left = "0";
       canvasElement.style.zIndex = "1";
+
+      // 2D context for isPointInStroke
       spiralDrawingCtx = canvasElement.getContext("2d");
       if (spiralDrawingCtx) {
         spiralDrawingCtx.lineWidth = 36;
         spiralDrawingCtx.lineCap = "round";
         spiralDrawingCtx.lineJoin = "round";
       }
+
       canvasElement.addEventListener("mousemove", (event) => {
         const rect = canvasElement.getBoundingClientRect();
         const scaleX = canvas.elt.width / rect.width;
@@ -315,57 +318,94 @@ function createSpiralSketch(container) {
         const y = (event.clientY - rect.top) * scaleY;
         const hovered = findSegmentNear(x, y);
         if (hovered) {
-          console.log("hover segment", hovered.track.name, hovered.track.artists);
+          hoveredIndex = spiralSegments.indexOf(hovered);
+          canvasElement.style.cursor = "pointer";
           updateTooltip(hovered.track, x, y, container);
         } else {
+          hoveredIndex = -1;
+          canvasElement.style.cursor = "default";
           hideTooltip();
         }
       });
+
       canvasElement.addEventListener("mouseleave", () => {
+        hoveredIndex = -1;
+        canvasElement.style.cursor = "default";
         hideTooltip();
       });
+
+      canvasElement.addEventListener("click", () => {
+        if (hoveredIndex >= 0) {
+          const url = spiralSegments[hoveredIndex].track.external_url;
+          if (url) window.open(url, "_blank");
+        }
+      });
     };
+
     p.draw = () => {
       p.background(255);
       p.strokeWeight(36);
       p.strokeCap(p.ROUND);
       p.strokeJoin(p.ROUND);
       p.noFill();
-      spiralSegments.forEach((segment) => {
-        p.stroke(segment.color);
+
+      // Draw all segments
+      spiralSegments.forEach((segment, idx) => {
+        // Use p5 stroke for visual; interaction uses Path2D ctx
+        p.stroke(idx === hoveredIndex ? 255 : segment.color);
         p.beginShape();
-        segment.points.forEach((point) => {
-          p.vertex(point.x, point.y);
-        });
+        segment.points.forEach((pt) => p.vertex(pt.x, pt.y));
         p.endShape();
+
+        if (idx === hoveredIndex) {
+          // halo
+          p.stroke(255);
+          p.strokeWeight(36 + 8);
+          p.beginShape();
+          segment.points.forEach((pt) => p.vertex(pt.x, pt.y));
+          p.endShape();
+
+          // main color on top
+          p.stroke(segment.color);
+          p.strokeWeight(36 + 2);
+          p.beginShape();
+          segment.points.forEach((pt) => p.vertex(pt.x, pt.y));
+          p.endShape();
+        }
       });
     };
   });
 }
 
-const HOVER_DISTANCE = 20;
+const HOVER_DISTANCE = 20; // fallback distance if Path2D not available
 
 function findSegmentNear(x, y) {
   if (spiralDrawingCtx && spiralSegments.length) {
-    return spiralSegments.find((segment) =>
-      spiralDrawingCtx.isPointInStroke(segment.path, x, y)
-    );
+    // Use isPointInStroke for precise hover
+    for (let i = 0; i < spiralSegments.length; i++) {
+      const seg = spiralSegments[i];
+      if (spiralDrawingCtx.isPointInStroke(seg.path, x, y)) return seg;
+    }
   }
-  const thresholdSq = HOVER_DISTANCE * HOVER_DISTANCE;
-  return spiralSegments.find((segment) =>
-    segment.points.some((point) => {
-      const dx = point.x - x;
-      const dy = point.y - y;
-      return dx * dx + dy * dy <= thresholdSq;
-    })
-  );
+  // Fallback: point-distance
+  const thrSq = HOVER_DISTANCE * HOVER_DISTANCE;
+  for (let i = 0; i < spiralSegments.length; i++) {
+    const seg = spiralSegments[i];
+    for (let j = 0; j < seg.points.length; j++) {
+      const pt = seg.points[j];
+      const dx = pt.x - x;
+      const dy = pt.y - y;
+      if (dx * dx + dy * dy <= thrSq) return seg;
+    }
+  }
+  return null;
 }
 
-function updateTooltip(track, x, y, container) {
-  if (!spiralTooltip) {
-    return;
-  }
-  const content = `<strong>${track.name}</strong><br>${track.artists}<br><em>${track.album}</em>`;
+function updateTooltip(track, x, y) {
+  if (!spiralTooltip) return;
+  const content = `<strong>${track.rank ? `#${track.rank} ` : ""}${
+    track.name
+  }</strong><br>${track.artists}<br><em>${track.album || ""}</em>`;
   spiralTooltip.innerHTML = content;
   spiralTooltip.style.display = "block";
   const tooltipWidth = spiralTooltip.offsetWidth;
@@ -385,18 +425,14 @@ function updateTooltip(track, x, y, container) {
 }
 
 function hideTooltip() {
-  if (spiralTooltip) {
-    spiralTooltip.style.display = "none";
-  }
+  if (spiralTooltip) spiralTooltip.style.display = "none";
 }
 
+// ------------ COLOR UTILS ------------
 function getProminentColor(imageUrl) {
-  if (!imageUrl) {
-    return Promise.resolve(null);
-  }
-  if (colorCache.has(imageUrl)) {
+  if (!imageUrl) return Promise.resolve(null);
+  if (colorCache.has(imageUrl))
     return Promise.resolve(colorCache.get(imageUrl));
-  }
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "Anonymous";
@@ -415,10 +451,8 @@ function getProminentColor(imageUrl) {
       const data = ctx.getImageData(0, 0, size, size).data;
       const pixels = [];
       for (let i = 0; i < data.length; i += 4) {
-        const alpha = data[i + 3];
-        if (alpha < 30) {
-          continue;
-        }
+        const a = data[i + 3];
+        if (a < 30) continue;
         pixels.push([data[i], data[i + 1], data[i + 2]]);
       }
       const dominant = findDominantColor(pixels);
@@ -433,99 +467,64 @@ function getProminentColor(imageUrl) {
   });
 }
 
-function formatDateValue(value) {
-  if (!Number.isFinite(value)) {
-    return "—";
-  }
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) {
-    return "—";
-  }
-  return dt.toISOString().split("T")[0];
-}
-
 function findDominantColor(pixels, k = 3, iterations = 6) {
-  if (!pixels.length) {
-    return DEFAULT_SWATCH_COLOR;
-  }
+  if (!pixels.length) return DEFAULT_SWATCH_COLOR;
   const centers = [];
-  for (let i = 0; i < k; i += 1) {
-    centers.push(pixels[(i * 3) % pixels.length]);
-  }
+  for (let i = 0; i < k; i++) centers.push(pixels[(i * 3) % pixels.length]);
   let lastBuckets = [];
-
-  for (let iter = 0; iter < iterations; iter += 1) {
+  for (let it = 0; it < iterations; it++) {
     const buckets = Array.from({ length: k }, () => []);
-    pixels.forEach((pixel) => {
-      let bestIndex = 0;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      centers.forEach((center, idx) => {
-        const dist =
-          Math.pow(pixel[0] - center[0], 2) +
-          Math.pow(pixel[1] - center[1], 2) +
-          Math.pow(pixel[2] - center[2], 2);
-        if (dist < bestDistance) {
-          bestDistance = dist;
-          bestIndex = idx;
+    pixels.forEach((px) => {
+      let bi = 0,
+        bd = Infinity;
+      centers.forEach((c, idx) => {
+        const d =
+          (px[0] - c[0]) ** 2 + (px[1] - c[1]) ** 2 + (px[2] - c[2]) ** 2;
+        if (d < bd) {
+          bd = d;
+          bi = idx;
         }
       });
-      buckets[bestIndex].push(pixel);
+      buckets[bi].push(px);
     });
-
     buckets.forEach((bucket, idx) => {
       if (!bucket.length) {
         centers[idx] = pixels[Math.floor(Math.random() * pixels.length)];
         return;
       }
-      const avg = bucket.reduce(
-        (acc, pixel) => {
-          acc[0] += pixel[0];
-          acc[1] += pixel[1];
-          acc[2] += pixel[2];
-          return acc;
-        },
+      const sum = bucket.reduce(
+        (a, p) => [a[0] + p[0], a[1] + p[1], a[2] + p[2]],
         [0, 0, 0]
       );
       centers[idx] = [
-        Math.round(avg[0] / bucket.length),
-        Math.round(avg[1] / bucket.length),
-        Math.round(avg[2] / bucket.length),
+        Math.round(sum[0] / bucket.length),
+        Math.round(sum[1] / bucket.length),
+        Math.round(sum[2] / bucket.length),
       ];
     });
     lastBuckets = buckets;
   }
-
-  let largestBucket = 0;
-  let dominantCenter = centers[0];
-  lastBuckets.forEach((bucket, idx) => {
-    if (bucket.length > largestBucket) {
-      largestBucket = bucket.length;
-      dominantCenter = centers[idx];
+  let best = 0,
+    center = centers[0];
+  lastBuckets.forEach((b, i) => {
+    if (b.length > best) {
+      best = b.length;
+      center = centers[i];
     }
   });
-  return rgbToCss(dominantCenter);
+  return `rgb(${center[0]}, ${center[1]}, ${center[2]})`;
 }
 
-function rgbToCss(rgb) {
-  if (!rgb || rgb.length !== 3) {
-    return DEFAULT_SWATCH_COLOR;
-  }
-  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-}
-
+// ------------ CSV / META ------------
 function parseCsv(text) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (!lines.length) {
-    return [];
-  }
+  if (!lines.length) return [];
   const headers = parseCsvLine(lines[0]);
   return lines
     .slice(1)
     .map((line) => {
       const values = parseCsvLine(line);
-      if (values.length !== headers.length) {
-        return null;
-      }
+      if (values.length !== headers.length) return null;
       const row = {};
       headers.forEach((header, idx) => {
         row[header.trim()] = values[idx];
@@ -537,8 +536,8 @@ function parseCsv(text) {
 
 function parseCsvLine(line) {
   const values = [];
-  let current = "";
-  let inQuotes = false;
+  let current = "",
+    inQuotes = false;
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
     if (char === '"' && line[i + 1] === '"') {
@@ -561,105 +560,56 @@ function parseCsvLine(line) {
   return values;
 }
 
-function parseDateToMs(value) {
-  if (!value) {
-    return null;
-  }
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
-}
-
 function processTracksFromCsv(text) {
   const rows = parseCsv(text);
-  return rows
-    .map((row) => {
-      const addedMs = parseDateToMs(row.added_at);
-      return {
-        ...row,
-        added_at: row.added_at,
-        added_ms: Number.isFinite(addedMs) ? addedMs : null,
-      };
-    })
-    .filter((track) => Number.isFinite(track.added_ms));
+  return rows.map((row) => ({
+    rank: row.rank,
+    name: row.name,
+    artists: row.artists,
+    album: row.album,
+    album_image: row.album_image,
+    external_url: row.external_url,
+    popularity: row.popularity ? Number(row.popularity) : null,
+    album_release_date: row.album_release_date || null,
+  }));
 }
 
 function fetchRangeMetadata() {
   return fetch(RANGE_META_URL, { cache: "no-store" })
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error("range metadata not available");
-      }
-      return response.json();
-    })
+    .then((response) => (response.ok ? response.json() : null))
     .catch(() => null);
 }
-function initRangeFromMeta() {
-  // Try to fetch the precomputed date range written at login
-  fetchRangeMetadata()
-    .then((rangeMeta) => {
-      if (!rangeMeta) {
-        // No metadata yet (user not logged in or no CSV)
-        rangeStatus.textContent =
-          "Log in and generate liked tracks to enable the date range filter.";
-        startRange.disabled = true;
-        endRange.disabled = true;
-        return;
-      }
 
-      // Use metadata to configure sliders
-      applyRangeMeta(rangeMeta);
+function applyRankMeta(meta) {
+  const n = topTracks.length || (meta?.max_rank ?? 1);
+  const minRank = meta?.min_rank ?? 1;
+  const maxRank = meta?.max_rank ?? n;
 
-      // After applyRangeMeta, the sliders' min/max/value are set.
-      const startValue = Number(startRange.value);
-      const endValue = Number(endRange.value);
-      const startText = formatDateValue(startValue);
-      const endText = formatDateValue(endValue);
+  startRange.min = minRank;
+  startRange.max = maxRank;
+  startRange.step = 1;
+  endRange.min = minRank;
+  endRange.max = maxRank;
+  endRange.step = 1;
 
-      startDateDisplay.textContent = `Start: ${startText}`;
-      endDateDisplay.textContent = `End: ${endText}`;
-      rangeStatus.textContent =
-        'Date range loaded. Click "Load Liked Songs" to fetch and filter your tracks.';
-    })
-    .catch(() => {
-      // If range metadata fetch fails (e.g. file missing), keep defaults
-      rangeStatus.textContent =
-        "Log in and generate liked tracks to enable the date range filter.";
-      startRange.disabled = true;
-      endRange.disabled = true;
-    });
-}
+  startRange.value = minRank;
+  endRange.value = maxRank;
 
-function applyRangeMeta(rangeMeta) {
-  const trackMin = likedTracks[0]?.added_ms ?? null;
-  const trackMax = likedTracks[likedTracks.length - 1]?.added_ms ?? null;
-  const metaMin = parseDateToMs(rangeMeta?.earliest);
-  const metaMax = parseDateToMs(rangeMeta?.latest);
-  let minValue = metaMin ?? trackMin;
-  let maxValue = metaMax ?? trackMax;
-  if (minValue == null || maxValue == null) {
-    startRange.disabled = true;
-    endRange.disabled = true;
-    return;
-  }
-  if (maxValue < minValue) {
-    [minValue, maxValue] = [maxValue, minValue];
-  }
-  const totalRange = Math.max(1, maxValue - minValue);
-  const sliderStep = Math.max(1, Math.floor(totalRange / 50));
-  startRange.min = minValue;
-  startRange.max = maxValue;
-  startRange.step = sliderStep;
-  endRange.min = minValue;
-  endRange.max = maxValue;
-  endRange.step = sliderStep;
-  startRange.value = minValue;
-  endRange.value = maxValue;
+  startLabel.textContent = `From rank: ${minRank}`;
+  endLabel.textContent = `To rank: ${maxRank}`;
+
   startRange.disabled = false;
   endRange.disabled = false;
 }
 
+// ------------ INIT ------------
 document.addEventListener("DOMContentLoaded", () => {
-  initRangeFromMeta();
-  // You can also auto-load tracks here if you want:
-  // fetchLiked();
+  // Pre-load rank bounds (written at login) before CSV fetch
+  fetchRangeMetadata().then((meta) => {
+    if (meta?.max_rank) {
+      applyRankMeta(meta);
+      rangeStatus.textContent =
+        'Rank range loaded. Click "Load Top Tracks" to fetch and filter.';
+    }
+  });
 });
