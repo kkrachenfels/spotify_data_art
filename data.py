@@ -9,9 +9,10 @@ Environment variables required:
 Run: `FLASK_APP=data.py flask run` from the `spotify_data_art` folder.
 """)
 import base64
-import csv  # <-- add this
+import csv
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from config import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI
@@ -86,6 +87,71 @@ def _fetch_all_liked_tracks(headers):
 	items.sort(key=lambda x: x['added_at'] or '')
 	return items
 
+def _parse_tracks_page(data):
+	items = []
+	for it in data.get('items', []):
+		track = it.get('track', {})
+		artists = ', '.join([a.get('name') for a in track.get('artists', [])])
+		album_images = track.get('album', {}).get('images', [])
+		album_image = album_images[0]['url'] if album_images else None
+		items.append({
+			'name': track.get('name'),
+			'artists': artists,
+			'album': track.get('album', {}).get('name'),
+			'album_image': album_image,
+			'external_url': track.get('external_urls', {}).get('spotify'),
+			'added_at': it.get('added_at')
+		})
+	return items
+
+def _fetch_liked_page(headers, offset, limit=50):
+	"""
+	Fetch a single page of liked tracks with a given offset.
+	"""
+	params = {'limit': limit, 'offset': offset}
+	r = requests.get(f"{API_BASE}/me/tracks", headers=headers, params=params)
+	if r.status_code != 200:
+		print(f"Failed to fetch liked tracks page at offset {offset}: {r.status_code} {r.text}")
+		return []
+	data = r.json()
+	return _parse_tracks_page(data), data.get('total')
+
+
+def _fetch_all_liked_tracks(headers, max_workers=8):
+	"""
+	Fetch all liked tracks using parallel requests over /me/tracks with offset/limit.
+	"""
+	limit = 50
+
+	# First page: get initial items + total count
+	first_items, total = _fetch_liked_page(headers, offset=0, limit=limit)
+	if total is None:
+		total = len(first_items)
+
+	items = list(first_items)
+
+	# Compute remaining offsets
+	offsets = list(range(limit, total, limit))
+	if not offsets:
+		# All items fit in the first page
+		items.sort(key=lambda x: x['added_at'] or '')
+		return items
+
+	def worker(offset):
+		page_items, _ = _fetch_liked_page(headers, offset=offset, limit=limit)
+		return offset, page_items
+
+	# Fan out in parallel
+	with ThreadPoolExecutor(max_workers=max_workers) as executor:
+		futures = {executor.submit(worker, offset): offset for offset in offsets}
+		for future in as_completed(futures):
+			offset, page_items = future.result()
+			items.extend(page_items)
+
+	# Sort by added_at
+	items.sort(key=lambda x: x['added_at'] or '')
+	return items
+
 
 def _save_liked_to_csv(items, filename="liked_tracks.csv"):
 	"""
@@ -152,7 +218,6 @@ def callback():
 		return f'Error: {error}'
 	if not code:
 		return 'No code provided', 400
-
 	payload = {
 		'grant_type': 'authorization_code',
 		'code': code,
@@ -163,20 +228,20 @@ def callback():
 	r = requests.post(TOKEN_URL, data=payload, headers=headers)
 	if r.status_code != 200:
 		return f'Token exchange failed: {r.text}', 500
-
 	tok = r.json()
 	session['access_token'] = tok.get('access_token')
 	session['refresh_token'] = tok.get('refresh_token')
 	expires_in = tok.get('expires_in', 3600)
 	session['expires_at'] = time.time() + int(expires_in)
 
-	# fetch all liked tracks immediately on login and save to CSV
+	# Fetch all liked tracks in parallel and save CSV
 	api_headers = _auth_header()
 	if api_headers:
-		all_liked = _fetch_all_liked_tracks(api_headers)
-		_save_liked_to_csv(all_liked)  # writes liked_tracks.csv in this folder
+		all_liked = _fetch_all_liked_tracks(api_headers, max_workers=8)
+		_save_liked_to_csv(all_liked)
 
 	return redirect('/')
+
 
 
 @app.route('/liked')
