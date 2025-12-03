@@ -114,62 +114,6 @@ def _fetch_top_tracks_page(headers, offset, limit=50, time_range='long_term'):
     return data.get('items', []), data.get('total')
 
 
-def _fetch_all_top_tracks(headers, time_range='long_term', max_workers=8):
-    """
-    Fetch ALL top tracks for the given time_range using offset pagination.
-    Uses the first page to read `total`, then fetches remaining pages in parallel.
-    Falls back to pure sequential walk if `total` is missing.
-    """
-    limit = 50
-
-    # First page (offset 0) – also gives us `total` in most cases
-    first_items, total = _fetch_top_tracks_page(headers, offset=0, limit=limit, time_range=time_range)
-    rows = _parse_top_tracks_items(first_items, start_rank=1)
-
-    if not first_items:
-        print(f"No top tracks returned for time_range={time_range}")
-        return rows
-
-    # If Spotify didn't return `total`, fall back to the sequential "walk until empty" behavior
-    if total is None:
-        print("No `total` in response; falling back to sequential pagination.")
-        offset = limit
-        global_rank = 1 + len(first_items)
-        while True:
-            items, _ = _fetch_top_tracks_page(headers, offset=offset, limit=limit, time_range=time_range)
-            if not items:
-                break
-            page_rows = _parse_top_tracks_items(items, start_rank=global_rank)
-            rows.extend(page_rows)
-            global_rank += len(items)
-            offset += limit
-        print(f"Fetched {len(rows)} top tracks for time_range={time_range} (sequential fallback)")
-        return rows
-
-    # Compute remaining offsets based on `total`
-    offsets = list(range(limit, total, limit))
-    if not offsets:
-        print(f"Fetched {len(rows)} top tracks for time_range={time_range} (single page)")
-        return rows
-
-    def worker(off):
-        items, _ = _fetch_top_tracks_page(headers, offset=off, limit=limit, time_range=time_range)
-        # Rank for this page starts at offset+1
-        return _parse_top_tracks_items(items, start_rank=off + 1)
-
-    # Fetch remaining pages in parallel
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = {ex.submit(worker, off): off for off in offsets}
-        for fut in as_completed(futures):
-            page_rows = fut.result()
-            rows.extend(page_rows)
-
-    # Ensure rows are globally ordered by rank
-    rows.sort(key=lambda r: r['rank'])
-    print(f"Fetched {len(rows)} top tracks for time_range={time_range} (parallel)")
-    return rows
-
-
 def _fetch_top_tracks_limited(headers, time_range='long_term', limit=MAX_TOP_TRACKS):
     rows = []
     offset = 0
@@ -252,17 +196,6 @@ def _fetch_liked_page(headers, offset, limit=50):
     data = r.json()
     return _parse_liked_page(data), data.get('total')
 
-
-# ------------------------- CSV/meta for liked (kept) -------------------------
-
-def _save_liked_to_csv(items, filename="liked_tracks.csv"):
-    fieldnames = ['name', 'artists', 'album', 'album_image', 'external_url', 'added_at']
-    with open(filename, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(items)
-    print(f"Saved {len(items)} liked tracks to {filename}")
-    _save_range_metadata(items)
 
 
 def _save_range_metadata(items, filename="liked_tracks_range.json"):
