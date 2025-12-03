@@ -75,7 +75,20 @@ const applyRangeBtn = el(
   { id: "apply-range", onclick: applyCurrentRange },
   "Update filter"
 );
-const SONG_DISPLAY_LIMIT = 10;
+const DEFAULT_SONG_DISPLAY_LIMIT = 10;
+let songDisplayLimit = DEFAULT_SONG_DISPLAY_LIMIT;
+const songCountInput = el("input", {
+  type: "number",
+  id: "song-count-input",
+  min: 1,
+  value: DEFAULT_SONG_DISPLAY_LIMIT,
+  step: 1,
+});
+const songCountBtn = el(
+  "button",
+  { id: "set-song-count", onclick: applySongCount },
+  "Set song count"
+);
 startRange.addEventListener("input", () => ensureRangeOrder(true));
 endRange.addEventListener("input", () => ensureRangeOrder(false));
 
@@ -95,7 +108,7 @@ const filterSection = el(
   el(
     "p",
     { class: "filter-hint" },
-    "Choose a start and end date to show the first 10 liked songs saved in that window."
+    "Choose a start and end date, then optionally set how many liked songs to visualize."
   ),
   el(
     "div",
@@ -111,6 +124,13 @@ const filterSection = el(
     endDateDisplay,
     endRange
   ),
+  el(
+    "div",
+    { class: "song-count-control" },
+    el("label", { for: "song-count-input" }, "Songs to show"),
+    songCountInput,
+    songCountBtn
+  ),
   applyRangeBtn
 );
 const rangeStatus = el(
@@ -120,6 +140,7 @@ const rangeStatus = el(
 );
 
 const SPIRAL_SIZE = 420;
+const TOTAL_SPIRAL_THETA = Math.PI * 4;
 let spiralInstance = null;
 let spiralSegments = [];
 let spiralTooltip = null;
@@ -186,6 +207,21 @@ function applyCurrentRange() {
   displayFilteredTracks();
 }
 
+function applySongCount() {
+  const parsed = Number(songCountInput.value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    rangeStatus.textContent = "Enter a positive number of songs to display.";
+    return;
+  }
+  songDisplayLimit = Math.max(1, Math.round(parsed));
+  songCountInput.value = songDisplayLimit;
+  if (likedTracks.length) {
+    displayFilteredTracks();
+  } else {
+    rangeStatus.textContent = "Load liked songs before changing how many are shown.";
+  }
+}
+
 function displayFilteredTracks() {
   if (!likedTracks.length) {
     list.innerHTML = "No liked songs loaded.";
@@ -198,16 +234,14 @@ function displayFilteredTracks() {
   const filtered = likedTracks.filter(
     (track) => track.added_ms >= rangeStart && track.added_ms <= rangeEnd
   );
-  renderSongList(filtered.slice(0, SONG_DISPLAY_LIMIT));
+  const showingCount = Math.min(songDisplayLimit, filtered.length);
+  renderSongList(filtered.slice(0, showingCount));
   const startText = formatDateValue(rangeStart);
   const endText = formatDateValue(rangeEnd);
   if (filtered.length === 0) {
     rangeStatus.textContent = `No liked songs between ${startText} and ${endText}.`;
   } else {
-    rangeStatus.textContent = `Showing ${Math.min(
-      filtered.length,
-      SONG_DISPLAY_LIMIT
-    )} of ${filtered.length} liked songs between ${startText} and ${endText}.`;
+    rangeStatus.textContent = `Showing ${showingCount} of ${filtered.length} liked songs between ${startText} and ${endText}.`;
   }
   startDateDisplay.textContent = `Start: ${startText}`;
   endDateDisplay.textContent = `End: ${endText}`;
@@ -251,15 +285,14 @@ function renderSongList(tracks) {
   Promise.all(colorPromises).then((colors) => {
     spiralSegments = prepareSpiralSegments(tracks, colors);
     createSpiralSketch(container);
-    container.appendChild(spiralTooltip);
   });
 }
 
 function prepareSpiralSegments(tracks, colors) {
   const center = SPIRAL_SIZE / 2;
-  const baseRadius = 10;
+  const baseRadius = 25;
   const radiusScale = 16;
-  const thetaStep = Math.PI / 2.45;
+  const thetaStep = TOTAL_SPIRAL_THETA / Math.max(1, tracks.length);
   const resolution = 0.05;
   return tracks.map((track, index) => {
     const startTheta = index * thetaStep;
@@ -292,7 +325,7 @@ function createSpiralSketch(container) {
   }
   spiralInstance = new p5((p) => {
     p.setup = () => {
-      const canvas = p.createCanvas(SPIRAL_SIZE * 1.5, SPIRAL_SIZE * 1.5);
+      const canvas = p.createCanvas(SPIRAL_SIZE, SPIRAL_SIZE);
       canvas.parent(container);
       canvas.position(0, 0);
       canvas.style("display", "block");
@@ -327,10 +360,11 @@ function createSpiralSketch(container) {
     };
     p.draw = () => {
       p.background(255);
-      p.strokeWeight(36);
       p.strokeCap(p.ROUND);
       p.strokeJoin(p.ROUND);
       p.noFill();
+      const weight = Math.max(8, 220 / Math.max(1, spiralSegments.length));
+      p.strokeWeight(weight);
       spiralSegments.forEach((segment) => {
         p.stroke(segment.color);
         p.beginShape();
