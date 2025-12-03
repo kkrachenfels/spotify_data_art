@@ -26,14 +26,13 @@ const header = el("h2", {}, "Spotify: Your Top Tracks");
 const info = el(
   "p",
   {},
-  'Click "Login with Spotify" to connect your account, then load your top tracks and use the rank slider below.'
+  'Click "Login with Spotify" to connect your account, then use the rank slider and "Update filter" button to refresh the spiral.'
 );
 const loginBtn = el(
   "button",
   { onclick: () => (window.location = "/login") },
   "Login with Spotify"
 );
-const loadBtn = el("button", { onclick: fetchTop }, "Load Top Tracks");
 const logoutBtn = el(
   "button",
   { onclick: () => (window.location = "/logout") },
@@ -41,10 +40,6 @@ const logoutBtn = el(
 );
 
 const list = el("div", { id: "liked-list" });
-
-// Top Tracks artifacts written by backend on login
-const CSV_URL = "/top_tracks.csv";
-const RANGE_META_URL = "/top_tracks_range.json";
 
 // Rank-based UI (no dates)
 const startLabel = el("span", { class: "date-value" }, "From rank: —");
@@ -66,7 +61,6 @@ const endRange = el("input", {
   disabled: true,
 });
 
-let topTracks = [];
 const colorCache = new Map();
 const DEFAULT_SWATCH_COLOR = "#555";
 const applyRangeBtn = el(
@@ -74,7 +68,22 @@ const applyRangeBtn = el(
   { id: "apply-range", onclick: applyCurrentRange },
   "Update filter"
 );
-const SONG_DISPLAY_LIMIT = 10;
+const MAX_TOP_TRACKS = 100;
+const DEFAULT_SONG_DISPLAY_LIMIT = 10;
+let songDisplayLimit = DEFAULT_SONG_DISPLAY_LIMIT;
+const songCountInput = el("input", {
+  type: "number",
+  id: "song-count-input",
+  min: 1,
+  max: MAX_TOP_TRACKS,
+  value: DEFAULT_SONG_DISPLAY_LIMIT,
+  step: 1,
+});
+const songCountBtn = el(
+  "button",
+  { id: "set-song-count", onclick: applySongCount },
+  "Set song count"
+);
 
 startRange.addEventListener("input", () => ensureRangeOrder(true));
 endRange.addEventListener("input", () => ensureRangeOrder(false));
@@ -92,7 +101,7 @@ const filterSection = el(
   el(
     "p",
     { class: "filter-hint" },
-    'Choose a rank range, then click "Update filter" to show the first 10 tracks in that window.'
+    `Choose a rank range, then click "Update filter" to load the top ${MAX_TOP_TRACKS} tracks for that window and re-draw.`
   ),
   el(
     "div",
@@ -107,6 +116,13 @@ const filterSection = el(
     el("label", { for: "end-range" }, "To"),
     endLabel,
     endRange
+  ),
+  el(
+    "div",
+    { class: "song-count-control" },
+    el("label", { for: "song-count-input" }, "Songs to show"),
+    songCountInput,
+    songCountBtn
   ),
   applyRangeBtn
 );
@@ -127,84 +143,51 @@ const BASE_STROKE = 36;
 root.appendChild(header);
 root.appendChild(info);
 root.appendChild(loginBtn);
-root.appendChild(loadBtn);
 root.appendChild(logoutBtn);
 root.appendChild(list);
 root.insertBefore(filterSection, list);
 root.insertBefore(rangeStatus, list);
 
-// ------------ LOAD TOP TRACKS ------------
-function fetchTop() {
+function applyCurrentRange() {
+  ensureRangeOrder(true);
+  const lo = Math.min(Number(startRange.value), Number(endRange.value));
+  const hi = Math.max(Number(startRange.value), Number(endRange.value));
   list.innerHTML = "Loading top tracks...";
-  rangeStatus.textContent = "Loading from top_tracks.csv...";
-
-  fetch(CSV_URL, { cache: "no-store" })
+  rangeStatus.textContent = "Fetching top tracks from Spotify...";
+  fetch(`/top_tracks?start=${lo}&end=${hi}`)
     .then(async (response) => {
-      if (!response.ok)
-        throw new Error(response.statusText || "top_tracks.csv not available");
-      const text = await response.text();
-      return processTracksFromCsv(text);
-    })
-    .then((tracks) => {
-      topTracks = tracks
-        .map((t) => ({ ...t, rank: Number(t.rank) }))
-        .filter((t) => Number.isFinite(t.rank))
-        .sort((a, b) => a.rank - b.rank);
-
-      if (!topTracks.length) {
-        list.innerHTML = "No top tracks available.";
-        startRange.disabled = true;
-        endRange.disabled = true;
-        return;
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || response.statusText);
       }
-
-      return fetchRangeMetadata().then((meta) => {
-        applyRankMeta(meta);
-        rangeStatus.textContent = `Loaded ${topTracks.length} top tracks. Adjust ranks and click "Update filter".`;
-        displayFilteredTracks();
-      });
+      return response.json();
+    })
+    .then((data) => {
+      const items = (data?.items || []).slice(0, songDisplayLimit);
+      renderSongList(items);
+      const shown = items.length;
+      const total = (data?.items || []).length;
+      rangeStatus.textContent = total
+        ? `Showing ${shown} of ${total} tracks between ranks ${lo} and ${hi}.`
+        : `No tracks found between ranks ${lo} and ${hi}.`;
+      startLabel.textContent = `From rank: ${lo}`;
+      endLabel.textContent = `To rank: ${hi}`;
     })
     .catch((err) => {
       list.innerHTML = "Failed to load top tracks: " + err;
-      rangeStatus.textContent =
-        "Please log in, refresh top tracks, and try again.";
-      startRange.disabled = true;
-      endRange.disabled = true;
+      rangeStatus.textContent = err.message || "Unable to load top tracks.";
     });
 }
 
-// ------------ FILTERING ------------
-function applyCurrentRange() {
-  if (!topTracks.length) {
-    rangeStatus.textContent = "Load top tracks before applying a rank filter.";
+function applySongCount() {
+  const parsed = Number(songCountInput.value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    rangeStatus.textContent = "Please enter a positive number of songs.";
     return;
   }
-  ensureRangeOrder(true);
-  displayFilteredTracks();
-}
-
-function displayFilteredTracks() {
-  if (!topTracks.length) {
-    list.innerHTML = "No tracks loaded.";
-    return;
-  }
-  const s = Number(startRange.value);
-  const e = Number(endRange.value);
-  const lo = Math.min(s, e);
-  const hi = Math.max(s, e);
-  const filtered = topTracks.filter((t) => t.rank >= lo && t.rank <= hi);
-  renderSongList(filtered.slice(0, SONG_DISPLAY_LIMIT));
-
-  if (filtered.length === 0) {
-    rangeStatus.textContent = `No tracks between ranks ${lo} and ${hi}.`;
-  } else {
-    rangeStatus.textContent = `Showing ${Math.min(
-      filtered.length,
-      SONG_DISPLAY_LIMIT
-    )} of ${filtered.length} tracks between ranks ${lo} and ${hi}.`;
-  }
-  startLabel.textContent = `From rank: ${lo}`;
-  endLabel.textContent = `To rank: ${hi}`;
+  songDisplayLimit = Math.min(MAX_TOP_TRACKS, Math.round(parsed));
+  songCountInput.value = songDisplayLimit;
+  applyCurrentRange();
 }
 
 // ------------ SPIRAL (Path2D + hover) ------------
@@ -515,101 +498,23 @@ function findDominantColor(pixels, k = 3, iterations = 6) {
   return `rgb(${center[0]}, ${center[1]}, ${center[2]})`;
 }
 
-// ------------ CSV / META ------------
-function parseCsv(text) {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (!lines.length) return [];
-  const headers = parseCsvLine(lines[0]);
-  return lines
-    .slice(1)
-    .map((line) => {
-      const values = parseCsvLine(line);
-      if (values.length !== headers.length) return null;
-      const row = {};
-      headers.forEach((header, idx) => {
-        row[header.trim()] = values[idx];
-      });
-      return row;
-    })
-    .filter(Boolean);
-}
-
-function parseCsvLine(line) {
-  const values = [];
-  let current = "",
-    inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"' && line[i + 1] === '"') {
-      current += '"';
-      i += 1;
-      continue;
-    }
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (char === "," && !inQuotes) {
-      values.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  values.push(current);
-  return values;
-}
-
-function processTracksFromCsv(text) {
-  const rows = parseCsv(text);
-  return rows.map((row) => ({
-    rank: row.rank,
-    name: row.name,
-    artists: row.artists,
-    album: row.album,
-    album_image: row.album_image,
-    external_url: row.external_url,
-    popularity: row.popularity ? Number(row.popularity) : null,
-    album_release_date: row.album_release_date || null,
-  }));
-}
-
-function fetchRangeMetadata() {
-  return fetch(RANGE_META_URL, { cache: "no-store" })
-    .then((response) => (response.ok ? response.json() : null))
-    .catch(() => null);
-}
-
-function applyRankMeta(meta) {
-  const n = topTracks.length || (meta?.max_rank ?? 1);
-  const minRank = meta?.min_rank ?? 1;
-  const maxRank = meta?.max_rank ?? n;
-
-  startRange.min = minRank;
-  startRange.max = maxRank;
+function resetRankControls() {
+  startRange.min = 1;
+  startRange.max = MAX_TOP_TRACKS;
   startRange.step = 1;
-  endRange.min = minRank;
-  endRange.max = maxRank;
+  endRange.min = 1;
+  endRange.max = MAX_TOP_TRACKS;
   endRange.step = 1;
-
-  startRange.value = minRank;
-  endRange.value = maxRank;
-
-  startLabel.textContent = `From rank: ${minRank}`;
-  endLabel.textContent = `To rank: ${maxRank}`;
-
+  startRange.value = 1;
+  endRange.value = MAX_TOP_TRACKS;
   startRange.disabled = false;
   endRange.disabled = false;
+  startLabel.textContent = "From rank: 1";
+  endLabel.textContent = `To rank: ${MAX_TOP_TRACKS}`;
 }
 
-// ------------ INIT ------------
 document.addEventListener("DOMContentLoaded", () => {
-  // Pre-load rank bounds (written at login) before CSV fetch
-  fetchRangeMetadata().then((meta) => {
-    if (meta?.max_rank) {
-      applyRankMeta(meta);
-      rangeStatus.textContent =
-        'Rank range loaded. Click "Load Top Tracks" to fetch and filter.';
-    }
-  });
+  resetRankControls();
+  rangeStatus.textContent =
+    'Rank range ready. Choose a window and click "Update filter".';
 });

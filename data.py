@@ -34,6 +34,7 @@ print(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, REDIRECT_URI)
 AUTH_URL = 'https://accounts.spotify.com/authorize'
 TOKEN_URL = 'https://accounts.spotify.com/api/token'
 API_BASE = 'https://api.spotify.com/v1'
+MAX_TOP_TRACKS = 100
 
 
 # ------------------------- helpers -------------------------
@@ -169,33 +170,57 @@ def _fetch_all_top_tracks(headers, time_range='long_term', max_workers=8):
     return rows
 
 
-def _save_top_to_csv(rows, filename="top_tracks.csv"):
-    fieldnames = [
-        'rank',
-        'name',
-        'artists',
-        'album',
-        'album_image',
-        'external_url',
-        'popularity',
-        'album_release_date',
-    ]
-    with open(filename, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-    print(f"Saved {len(rows)} top tracks to {filename}")
+def _fetch_top_tracks_limited(headers, time_range='long_term', limit=MAX_TOP_TRACKS):
+    rows = []
+    offset = 0
+    while len(rows) < limit:
+        page_limit = min(50, limit - len(rows))
+        items, _ = _fetch_top_tracks_page(
+            headers, offset=offset, limit=page_limit, time_range=time_range
+        )
+        if not items:
+            break
+        rows.extend(_parse_top_tracks_items(items, start_rank=offset + 1))
+        offset += len(items)
+        if len(items) < page_limit:
+            break
+    return rows[:limit]
 
 
-def _save_top_range_meta(rows, filename="top_tracks_range.json"):
-    total = len(rows)
-    meta = {
-        'min_rank': 1 if total else 0,
-        'max_rank': total,
-        'time_range': 'long_term',
-    }
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(meta, f)
+@app.route('/top_tracks')
+def top_tracks():
+    if 'access_token' not in session:
+        return jsonify({'error': 'not_authenticated'}), 401
+    if _is_token_expired():
+        if not _refresh_token():
+            return jsonify({'error': 'token_refresh_failed'}), 401
+    headers = _auth_header()
+    if not headers:
+        return jsonify({'error': 'not_authenticated'}), 401
+
+    try:
+        rows = _fetch_top_tracks_limited(headers, time_range='long_term', limit=MAX_TOP_TRACKS)
+    except Exception as err:
+        return jsonify({'error': 'spotify_api_failed', 'details': str(err)}), 500
+
+    try:
+        start_rank = max(1, int(request.args.get('start', 1)))
+    except (ValueError, TypeError):
+        start_rank = 1
+    try:
+        end_rank = min(MAX_TOP_TRACKS, int(request.args.get('end', MAX_TOP_TRACKS)))
+    except (ValueError, TypeError):
+        end_rank = MAX_TOP_TRACKS
+    if end_rank < start_rank:
+        start_rank, end_rank = end_rank, start_rank
+
+    filtered = [row for row in rows if start_rank <= row['rank'] <= end_rank]
+    return jsonify({
+        'items': filtered,
+        'min_rank': start_rank,
+        'max_rank': end_rank,
+        'total': len(filtered),
+    })
 
 
 # ---------------------- LIKED SONGS (kept for /liked route) ----------------------
@@ -300,19 +325,6 @@ def callback():
     session['refresh_token'] = tok.get('refresh_token')
     expires_in = tok.get('expires_in', 3600)
     session['expires_at'] = time.time() + int(expires_in)
-
-    # ---- Fetch ALL top tracks (long_term) and write CSV + meta IF not present ----
-    api_headers = _auth_header()
-    if api_headers:
-        csv_exists = os.path.exists("top_tracks.csv")
-        meta_exists = os.path.exists("top_tracks_range.json")
-
-        if not (csv_exists and meta_exists):
-            top_rows = _fetch_all_top_tracks(api_headers, time_range='long_term', max_workers=8)
-            _save_top_to_csv(top_rows)
-            _save_top_range_meta(top_rows)
-        else:
-            print("top_tracks.csv/top_tracks_range.json already exist; skipping refetch.")
 
     return redirect('/')
 
