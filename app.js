@@ -68,9 +68,24 @@ const endRange = el("input", {
   disabled: true,
 });
 let likedTracks = [];
+const applyRangeBtn = el(
+  "button",
+  { id: "apply-range", onclick: applyCurrentRange },
+  "Update filter"
+);
 const SONG_DISPLAY_LIMIT = 10;
-startRange.addEventListener("input", () => handleSliderInput(true));
-endRange.addEventListener("input", () => handleSliderInput(false));
+startRange.addEventListener("input", () => ensureRangeOrder(true));
+endRange.addEventListener("input", () => ensureRangeOrder(false));
+
+function ensureRangeOrder(isStart) {
+  const startValue = Number(startRange.value);
+  const endValue = Number(endRange.value);
+  if (isStart && startValue > endValue) {
+    endRange.value = startValue;
+  } else if (!isStart && endValue < startValue) {
+    startRange.value = endValue;
+  }
+}
 const filterSection = el(
   "section",
   { id: "date-filter" },
@@ -93,7 +108,8 @@ const filterSection = el(
     el("label", { for: "end-range" }, "To"),
     endDateDisplay,
     endRange
-  )
+  ),
+  applyRangeBtn
 );
 const rangeStatus = el(
   "p",
@@ -140,7 +156,7 @@ function fetchLiked() {
       }
 
       applyRangeMeta(rangeMeta);
-      rangeStatus.textContent = `Loaded ${likedTracks.length} liked songs. Use the sliders to narrow the date range.`;
+      rangeStatus.textContent = `Loaded ${likedTracks.length} liked songs. Adjust the sliders and click "Update filter" to narrow the date range.`;
       displayFilteredTracks();
     })
     .catch((err) => {
@@ -163,6 +179,16 @@ function handleSliderInput(isStart) {
   } else if (!isStart && endValue < startValue) {
     startRange.value = endValue;
   }
+  displayFilteredTracks();
+}
+
+function applyCurrentRange() {
+  if (!likedTracks.length) {
+    rangeStatus.textContent = "Load liked songs before applying a date filter.";
+    return;
+  }
+  // Make sure sliders aren't crossing in a weird way
+  ensureRangeOrder(true);
   displayFilteredTracks();
 }
 
