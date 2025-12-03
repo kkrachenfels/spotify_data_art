@@ -286,30 +286,17 @@ function getProminentColor(imageUrl) {
       }
       ctx.drawImage(img, 0, 0, size, size);
       const data = ctx.getImageData(0, 0, size, size).data;
-      let r = 0,
-        g = 0,
-        b = 0,
-        count = 0;
+      const pixels = [];
       for (let i = 0; i < data.length; i += 4) {
         const alpha = data[i + 3];
-        if (alpha < 40) {
+        if (alpha < 30) {
           continue;
         }
-        r += data[i];
-        g += data[i + 1];
-        b += data[i + 2];
-        count += 1;
+        pixels.push([data[i], data[i + 1], data[i + 2]]);
       }
-      if (!count) {
-        colorCache.set(imageUrl, null);
-        resolve(null);
-        return;
-      }
-      const color = `rgb(${Math.round(r / count)}, ${Math.round(
-        g / count
-      )}, ${Math.round(b / count)})`;
-      colorCache.set(imageUrl, color);
-      resolve(color);
+      const dominant = findDominantColor(pixels);
+      colorCache.set(imageUrl, dominant);
+      resolve(dominant);
     };
     img.onerror = () => {
       colorCache.set(imageUrl, null);
@@ -328,6 +315,75 @@ function formatDateValue(value) {
     return "—";
   }
   return dt.toISOString().split("T")[0];
+}
+
+function findDominantColor(pixels, k = 3, iterations = 6) {
+  if (!pixels.length) {
+    return DEFAULT_SWATCH_COLOR;
+  }
+  const centers = [];
+  for (let i = 0; i < k; i += 1) {
+    centers.push(pixels[(i * 3) % pixels.length]);
+  }
+  let lastBuckets = [];
+
+  for (let iter = 0; iter < iterations; iter += 1) {
+    const buckets = Array.from({ length: k }, () => []);
+    pixels.forEach((pixel) => {
+      let bestIndex = 0;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      centers.forEach((center, idx) => {
+        const dist =
+          Math.pow(pixel[0] - center[0], 2) +
+          Math.pow(pixel[1] - center[1], 2) +
+          Math.pow(pixel[2] - center[2], 2);
+        if (dist < bestDistance) {
+          bestDistance = dist;
+          bestIndex = idx;
+        }
+      });
+      buckets[bestIndex].push(pixel);
+    });
+
+    buckets.forEach((bucket, idx) => {
+      if (!bucket.length) {
+        centers[idx] = pixels[Math.floor(Math.random() * pixels.length)];
+        return;
+      }
+      const avg = bucket.reduce(
+        (acc, pixel) => {
+          acc[0] += pixel[0];
+          acc[1] += pixel[1];
+          acc[2] += pixel[2];
+          return acc;
+        },
+        [0, 0, 0]
+      );
+      centers[idx] = [
+        Math.round(avg[0] / bucket.length),
+        Math.round(avg[1] / bucket.length),
+        Math.round(avg[2] / bucket.length),
+      ];
+    });
+    lastBuckets = buckets;
+  }
+
+  let largestBucket = 0;
+  let dominantCenter = centers[0];
+  lastBuckets.forEach((bucket, idx) => {
+    if (bucket.length > largestBucket) {
+      largestBucket = bucket.length;
+      dominantCenter = centers[idx];
+    }
+  });
+  return rgbToCss(dominantCenter);
+}
+
+function rgbToCss(rgb) {
+  if (!rgb || rgb.length !== 3) {
+    return DEFAULT_SWATCH_COLOR;
+  }
+  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
 function parseCsv(text) {
