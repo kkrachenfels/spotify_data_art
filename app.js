@@ -116,7 +116,9 @@ function fetchLiked() {
   const csvPromise = fetch(CSV_URL, { cache: "no-store" })
     .then(async (response) => {
       if (!response.ok) {
-        throw new Error(response.statusText || "liked_tracks.csv not available");
+        throw new Error(
+          response.statusText || "liked_tracks.csv not available"
+        );
       }
       const text = await response.text();
       return processTracksFromCsv(text);
@@ -317,6 +319,41 @@ function fetchRangeMetadata() {
     })
     .catch(() => null);
 }
+function initRangeFromMeta() {
+  // Try to fetch the precomputed date range written at login
+  fetchRangeMetadata()
+    .then((rangeMeta) => {
+      if (!rangeMeta) {
+        // No metadata yet (user not logged in or no CSV)
+        rangeStatus.textContent =
+          "Log in and generate liked tracks to enable the date range filter.";
+        startRange.disabled = true;
+        endRange.disabled = true;
+        return;
+      }
+
+      // Use metadata to configure sliders
+      applyRangeMeta(rangeMeta);
+
+      // After applyRangeMeta, the sliders' min/max/value are set.
+      const startValue = Number(startRange.value);
+      const endValue = Number(endRange.value);
+      const startText = formatDateValue(startValue);
+      const endText = formatDateValue(endValue);
+
+      startDateDisplay.textContent = `Start: ${startText}`;
+      endDateDisplay.textContent = `End: ${endText}`;
+      rangeStatus.textContent =
+        'Date range loaded. Click "Load Liked Songs" to fetch and filter your tracks.';
+    })
+    .catch(() => {
+      // If range metadata fetch fails (e.g. file missing), keep defaults
+      rangeStatus.textContent =
+        "Log in and generate liked tracks to enable the date range filter.";
+      startRange.disabled = true;
+      endRange.disabled = true;
+    });
+}
 
 function applyRangeMeta(rangeMeta) {
   const trackMin = likedTracks[0]?.added_ms ?? null;
@@ -347,5 +384,8 @@ function applyRangeMeta(rangeMeta) {
   endRange.disabled = false;
 }
 
-// Optionally auto-load on start
-// fetchLiked();
+document.addEventListener("DOMContentLoaded", () => {
+  initRangeFromMeta();
+  // You can also auto-load tracks here if you want:
+  // fetchLiked();
+});
