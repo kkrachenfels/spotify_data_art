@@ -77,5 +77,7 @@ class Vinyl {
   }
 }
 
-export default Vinyl;
+if (typeof window !== "undefined") {
+  window.Vinyl = Vinyl;
+}
 

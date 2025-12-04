@@ -154,7 +154,7 @@ function applyCurrentRange() {
   const hi = Math.max(Number(startRange.value), Number(endRange.value));
   list.innerHTML = "Loading top tracks...";
   rangeStatus.textContent = "Fetching top tracks from Spotify...";
-  fetch(`/top_tracks?start=${lo}&end=${hi}`)
+  fetch(`/top_tracks?start=${lo}&end=${hi}`, { cache: "no-store" })
     .then(async (response) => {
       if (!response.ok) {
         const text = await response.text();
@@ -163,10 +163,10 @@ function applyCurrentRange() {
       return response.json();
     })
     .then((data) => {
-      const items = (data?.items || []).slice(0, songDisplayLimit);
-      renderSongList(items);
-      const shown = items.length;
-      const total = (data?.items || []).length;
+      const items = (data?.items || []);
+      const shown = Math.min(items.length, songDisplayLimit);
+      renderVinylScene(items.slice(0, shown));
+      const total = items.length;
       rangeStatus.textContent = total
         ? `Showing ${shown} of ${total} tracks between ranks ${lo} and ${hi}.`
         : `No tracks found between ranks ${lo} and ${hi}.`;
@@ -191,224 +191,104 @@ function applySongCount() {
 }
 
 // ------------ SPIRAL (Path2D + hover) ------------
-function renderSongList(tracks) {
-  list.innerHTML = "";
-  if (!tracks.length) {
-    list.innerHTML = "No tracks in that rank range.";
-    return;
-  }
+// ------------ VINYL DISPLAY ------------
+const VINYL_CANVAS_SIZE = 520;
+const VINYL_COUNT = 10;
+const VINYL_OUTER_RADIUS = 58;
+const VINYL_INNER_RADIUS = 26;
+let vinylCanvas = null;
+let vinylCtx = null;
+let vinylAnimationId = null;
+let vinylObjects = [];
+let lastVinylTimestamp = null;
 
-  const container = el("div", { class: "spiral-canvas-container" });
+function renderVinylScene(tracks) {
+  list.innerHTML = "";
+  const container = el("div", { class: "vinyl-canvas-container" });
   container.style.position = "relative";
-  container.style.width = `${SPIRAL_SIZE}px`;
-  container.style.height = `${SPIRAL_SIZE}px`;
+  container.style.width = `${VINYL_CANVAS_SIZE}px`;
+  container.style.height = `${VINYL_CANVAS_SIZE}px`;
   container.style.margin = "16px auto";
   container.style.border = "1px solid #eee";
   container.style.borderRadius = "12px";
   container.style.backgroundColor = "#fff";
   list.appendChild(container);
 
-  spiralTooltip = el("div", { class: "spiral-tooltip" });
-  spiralTooltip.style.position = "absolute";
-  spiralTooltip.style.pointerEvents = "none";
-  spiralTooltip.style.padding = "10px 12px";
-  spiralTooltip.style.borderRadius = "6px";
-  spiralTooltip.style.background = "rgba(0, 0, 0, 0.75)";
-  spiralTooltip.style.color = "#fff";
-  spiralTooltip.style.fontSize = "0.85rem";
-  spiralTooltip.style.display = "none";
-  spiralTooltip.style.maxWidth = "220px";
-  spiralTooltip.style.zIndex = "100";
-  container.appendChild(spiralTooltip);
+  if (!tracks.length) {
+    list.innerHTML = "No tracks in that rank range.";
+    return;
+  }
 
-  const colorPromises = tracks.map((item) =>
+  const selected = tracks.slice(0, VINYL_COUNT);
+  const colorPromises = selected.map((item) =>
     getProminentColor(item.album_image).then(
       (color) => color || DEFAULT_SWATCH_COLOR
     )
   );
 
   Promise.all(colorPromises).then((colors) => {
-    spiralSegments = prepareSpiralSegments(tracks, colors);
-    createSpiralSketch(container);
-    container.appendChild(spiralTooltip);
+    initializeVinylScene(container, selected, colors);
   });
 }
 
-function prepareSpiralSegments(tracks, colors) {
-  const center = SPIRAL_SIZE / 2;
-  const baseRadius = 10;
-  const radiusScale = 16;
-  const thetaStep = Math.PI / 2.45;
-  const resolution = 0.05;
+function initializeVinylScene(container, tracks, colors) {
+  stopVinylAnimation();
+  vinylObjects.length = 0;
+  if (vinylCanvas) {
+    container.removeChild(vinylCanvas);
+    vinylCanvas = null;
+    vinylCtx = null;
+  }
+  vinylCanvas = document.createElement("canvas");
+  vinylCanvas.width = VINYL_CANVAS_SIZE;
+  vinylCanvas.height = VINYL_CANVAS_SIZE;
+  vinylCanvas.style.display = "block";
+  vinylCanvas.style.position = "absolute";
+  vinylCanvas.style.top = "0";
+  vinylCanvas.style.left = "0";
+  container.appendChild(vinylCanvas);
+  vinylCtx = vinylCanvas.getContext("2d");
 
-  return tracks.map((track, index) => {
-    const startTheta = index * thetaStep;
-    const endTheta = startTheta + thetaStep;
-    const points = [];
-    const path = new Path2D();
+  const center = VINYL_CANVAS_SIZE / 2;
+  const radius = center - VINYL_OUTER_RADIUS - 16;
+  const count = tracks.length;
+  for (let i = 0; i < count; i += 1) {
+    const angle = (Math.PI * 2 * i) / count;
+    const x = center + radius * Math.cos(angle);
+    const y = center + radius * Math.sin(angle);
+    const vinyl = new Vinyl(
+      x,
+      y,
+      VINYL_OUTER_RADIUS,
+      VINYL_INNER_RADIUS,
+      colors[i] || DEFAULT_SWATCH_COLOR
+    );
+    vinyl.setAngularVelocity(0.6 + (i % 3) * 0.15);
+    vinylObjects.push(vinyl);
+  }
 
-    for (
-      let theta = startTheta;
-      theta <= endTheta + resolution;
-      theta += resolution
-    ) {
-      const r = baseRadius + radiusScale * theta;
-      const x = center + r * Math.cos(theta);
-      const y = center + r * Math.sin(theta);
-      if (points.length === 0) path.moveTo(x, y);
-      else path.lineTo(x, y);
-      points.push({ x, y });
-    }
+  lastVinylTimestamp = null;
+  vinylAnimationId = requestAnimationFrame(animateVinyls);
+}
 
-    return {
-      track,
-      color: colors[index],
-      points,
-      path,
-    };
+function animateVinyls(timestamp) {
+  if (!vinylCtx) return;
+  if (!lastVinylTimestamp) lastVinylTimestamp = timestamp;
+  const delta = (timestamp - lastVinylTimestamp) / 1000;
+  lastVinylTimestamp = timestamp;
+  vinylCtx.clearRect(0, 0, VINYL_CANVAS_SIZE, VINYL_CANVAS_SIZE);
+  vinylObjects.forEach((vinyl) => {
+    vinyl.update(delta);
+    vinyl.draw(vinylCtx);
   });
+  vinylAnimationId = requestAnimationFrame(animateVinyls);
 }
 
-function createSpiralSketch(container) {
-  if (spiralInstance) {
-    spiralInstance.remove();
+function stopVinylAnimation() {
+  if (vinylAnimationId) {
+    cancelAnimationFrame(vinylAnimationId);
+    vinylAnimationId = null;
   }
-  spiralInstance = new p5((p) => {
-    p.setup = () => {
-      const canvas = p.createCanvas(SPIRAL_SIZE * 1.5, SPIRAL_SIZE * 1.5);
-      canvas.parent(container);
-      canvas.position(0, 0);
-      canvas.style("display", "block");
-      const canvasElement = canvas.elt;
-      canvasElement.style.position = "absolute";
-      canvasElement.style.top = "0";
-      canvasElement.style.left = "0";
-      canvasElement.style.zIndex = "1";
-
-      // 2D context for isPointInStroke
-      spiralDrawingCtx = canvasElement.getContext("2d");
-      if (spiralDrawingCtx) {
-        spiralDrawingCtx.lineWidth = 36;
-        spiralDrawingCtx.lineCap = "round";
-        spiralDrawingCtx.lineJoin = "round";
-      }
-
-      canvasElement.addEventListener("mousemove", (event) => {
-        const rect = canvasElement.getBoundingClientRect();
-        const scaleX = canvas.elt.width / rect.width;
-        const scaleY = canvas.elt.height / rect.height;
-        const x = (event.clientX - rect.left) * scaleX;
-        const y = (event.clientY - rect.top) * scaleY;
-        const hovered = findSegmentNear(x, y);
-        if (hovered) {
-          hoveredIndex = spiralSegments.indexOf(hovered);
-          canvasElement.style.cursor = "pointer";
-          updateTooltip(hovered.track, x, y, container);
-        } else {
-          hoveredIndex = -1;
-          canvasElement.style.cursor = "default";
-          hideTooltip();
-        }
-      });
-
-      canvasElement.addEventListener("mouseleave", () => {
-        hoveredIndex = -1;
-        canvasElement.style.cursor = "default";
-        hideTooltip();
-      });
-
-      canvasElement.addEventListener("click", () => {
-        if (hoveredIndex >= 0) {
-          const url = spiralSegments[hoveredIndex].track.external_url;
-          if (url) window.open(url, "_blank");
-        }
-      });
-    };
-
-    p.draw = () => {
-      p.background(255);
-      p.strokeWeight(36);
-      p.strokeCap(p.ROUND);
-      p.strokeJoin(p.ROUND);
-      p.noFill();
-
-      // Draw all segments
-      spiralSegments.forEach((segment, idx) => {
-        // Use p5 stroke for visual; interaction uses Path2D ctx
-        p.stroke(idx === hoveredIndex ? 255 : segment.color);
-        p.beginShape();
-        segment.points.forEach((pt) => p.vertex(pt.x, pt.y));
-        p.endShape();
-
-        if (idx === hoveredIndex) {
-          // halo
-          p.stroke(255);
-          p.strokeWeight(36 + 8);
-          p.beginShape();
-          segment.points.forEach((pt) => p.vertex(pt.x, pt.y));
-          p.endShape();
-
-          // main color on top
-          p.stroke(segment.color);
-          p.strokeWeight(36 + 2);
-          p.beginShape();
-          segment.points.forEach((pt) => p.vertex(pt.x, pt.y));
-          p.endShape();
-        }
-      });
-    };
-  });
-}
-
-const HOVER_DISTANCE = 20; // fallback distance if Path2D not available
-
-function findSegmentNear(x, y) {
-  if (spiralDrawingCtx && spiralSegments.length) {
-    // Use isPointInStroke for precise hover
-    for (let i = 0; i < spiralSegments.length; i++) {
-      const seg = spiralSegments[i];
-      if (spiralDrawingCtx.isPointInStroke(seg.path, x, y)) return seg;
-    }
-  }
-  // Fallback: point-distance
-  const thrSq = HOVER_DISTANCE * HOVER_DISTANCE;
-  for (let i = 0; i < spiralSegments.length; i++) {
-    const seg = spiralSegments[i];
-    for (let j = 0; j < seg.points.length; j++) {
-      const pt = seg.points[j];
-      const dx = pt.x - x;
-      const dy = pt.y - y;
-      if (dx * dx + dy * dy <= thrSq) return seg;
-    }
-  }
-  return null;
-}
-
-function updateTooltip(track, x, y) {
-  if (!spiralTooltip) return;
-  const content = `<strong>${track.rank ? `#${track.rank} ` : ""}${
-    track.name
-  }</strong><br>${track.artists}<br><em>${track.album || ""}</em>`;
-  spiralTooltip.innerHTML = content;
-  spiralTooltip.style.display = "block";
-  const tooltipWidth = spiralTooltip.offsetWidth;
-  const tooltipHeight = spiralTooltip.offsetHeight;
-  const offsetX = 12;
-  const offsetY = -tooltipHeight - 8;
-  const left = Math.min(
-    Math.max(x + offsetX, 8),
-    SPIRAL_SIZE - tooltipWidth - 8
-  );
-  const top = Math.max(
-    Math.min(y + offsetY, SPIRAL_SIZE - tooltipHeight - 8),
-    8
-  );
-  spiralTooltip.style.left = `${left}px`;
-  spiralTooltip.style.top = `${top}px`;
-}
-
-function hideTooltip() {
-  if (spiralTooltip) spiralTooltip.style.display = "none";
 }
 
 // ------------ COLOR UTILS ------------
