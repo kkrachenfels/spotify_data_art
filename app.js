@@ -86,6 +86,8 @@ const MAX_TOP_TRACKS = 100;
 const FRUIT_CANVAS_WIDTH = 280;
 const FRUIT_CANVAS_HEIGHT = 360;
 const FRUIT_SPAWN_INTERVAL = 2000;
+const FRUIT_MOVE_TIME = 2;
+const FRUIT_MOVE_MARGIN = 24;
 const FRUIT_ASSETS = {
   apple: "assets/caterpillar_apple.png",
   pear: "assets/caterpillar_pear.png",
@@ -149,9 +151,9 @@ const rangeStatus = el(
   "Load top tracks to enable the rank filter."
 );
 let vinylMouse = { x: -9999, y: -9999 };
-const controlColumn = el(
+const floatingControls = el(
   "div",
-  { class: "control-column" },
+  { class: "floating-controls" },
   filterSection,
   rangeStatus
 );
@@ -159,17 +161,10 @@ const fruitCanvas = document.createElement("canvas");
 fruitCanvas.width = FRUIT_CANVAS_WIDTH;
 fruitCanvas.height = FRUIT_CANVAS_HEIGHT;
 const fruitCtx = fruitCanvas.getContext("2d");
-const fruitCaption = el(
-  "p",
-  { class: "fruit-caption" },
-  "Load top tracks to start the fruit preview."
-);
 const fruitPanel = el(
   "div",
   { class: "fruit-panel" },
-  el("p", { class: "panel-title" }, "Song fruit preview"),
-  fruitCanvas,
-  fruitCaption
+  fruitCanvas
 );
 const vinylPanel = el("div", { class: "vinyl-panel" }, list);
 const visualColumn = el(
@@ -181,7 +176,6 @@ const visualColumn = el(
 const contentLayout = el(
   "div",
   { class: "content-layout" },
-  controlColumn,
   visualColumn
 );
 let fruitQueue = [];
@@ -195,6 +189,7 @@ root.appendChild(header);
 root.appendChild(info);
 root.appendChild(loginBtn);
 root.appendChild(logoutBtn);
+root.appendChild(floatingControls);
 root.appendChild(contentLayout);
 
 function applyCurrentRange() {
@@ -241,7 +236,7 @@ function renderVinylScene(tracks) {
   container.style.alignSelf = "flex-start";
   container.style.paddingLeft = "16px";
   container.style.width = `${VINYL_CANVAS_WIDTH + 40}px`;
-  container.style.border = "1px solid #eee";
+  container.style.border = "none";
   container.style.borderRadius = "12px";
   container.style.backgroundColor = "#fff";
   list.appendChild(container);
@@ -754,11 +749,12 @@ function resetFruitSequence(tracks) {
   fruitSpawnIndex = 0;
   fruitObjects.length = 0;
   if (!fruitQueue.length) {
-    fruitCaption.textContent = "No tracks to preview.";
     if (fruitCtx)
       fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
     return;
   }
+  if (fruitCtx)
+    fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
   spawnNextFruit();
   if (fruitQueue.length > 1) {
     fruitIntervalId = setInterval(() => {
@@ -772,7 +768,6 @@ function stopFruitSequence() {
   fruitObjects.length = 0;
   if (fruitCtx)
     fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
-  fruitCaption.textContent = "No tracks to preview.";
 }
 
 function spawnNextFruit() {
@@ -788,6 +783,12 @@ function spawnNextFruit() {
     image,
     120 + Math.random() * 60
   );
+  const startX = 0;
+  const endX = FRUIT_CANVAS_WIDTH;
+  const travelDistance = Math.max(endX - startX, 0);
+  fruit.position.x = startX;
+  fruit.position.y = FRUIT_CANVAS_HEIGHT / 2;
+  fruit.setVelocity(travelDistance / FRUIT_MOVE_TIME, 0);
   const popularity = track.popularity ?? 75;
   const bpm = Math.max(70, Math.min(200, Math.round(popularity * 1.8)));
   fruit.setTrackInfo(
@@ -800,9 +801,7 @@ function spawnNextFruit() {
     (fruitSpawnIndex / Math.max(fruitQueue.length, 1)) * Math.PI
   );
   fruitObjects.splice(0, fruitObjects.length, fruit);
-  fruitCaption.textContent = `${track.rank ? `#${track.rank} ` : ""}${
-    track.name
-  }`;
+  // optional: no caption text
   fruitSpawnIndex += 1;
   if (fruitSpawnIndex >= fruitQueue.length) {
     stopFruitInterval();

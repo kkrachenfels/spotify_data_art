@@ -12,6 +12,7 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
+  position: relative;
 }
 
 html,
@@ -213,10 +214,31 @@ input[type="range"]:disabled {
 
 .content-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 32px;
   align-items: flex-start;
   flex: 1;
+  margin-top: 16px;
+}
+
+.floating-controls {
+  position: absolute;
+  top: 20px;
+  right: 18px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  z-index: 5;
+}
+
+.floating-controls .filter-hint {
+  margin-bottom: 0;
 }
 
 .control-column {
@@ -230,29 +252,28 @@ input[type="range"]:disabled {
 .visual-column {
   display: flex;
   justify-content: flex-end;
-  align-items: flex-start;
-  gap: 24px;
+  align-items: flex-end;
+  gap: 0;
   width: 100%;
 }
 
 .fruit-panel {
   width: 280px;
   background: #ffffff;
-  border: 1px solid #eee;
   border-radius: 16px;
-  padding: 16px;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.06);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
+  align-items: stretch;
+  align-self: flex-end;
 }
 
 .fruit-panel canvas {
   width: 100%;
   height: auto;
   border-radius: 12px;
-  background: #fafafa;
+  background: #fff;
+  border: none;
 }
 
 .fruit-panel .panel-title {
@@ -274,7 +295,7 @@ input[type="range"]:disabled {
   flex: 1;
   display: flex;
   justify-content: flex-end;
-  align-items: flex-start;
+  align-items: flex-end;
 }
 
 #liked-list {
@@ -317,6 +338,12 @@ input[type="range"]:disabled {
   }
   .vinyl-panel {
     justify-content: center;
+  }
+  .floating-controls {
+    position: static;
+    box-shadow: none;
+    width: 100%;
+    border-radius: 12px;
   }
 }
 
