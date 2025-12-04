@@ -224,7 +224,8 @@ input[type="range"]:disabled {
 .floating-controls {
   position: absolute;
   top: 20px;
-  right: 18px;
+  left: 500px;
+  right: auto;
   width: 300px;
   display: flex;
   flex-direction: column;

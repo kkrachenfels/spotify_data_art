@@ -26,7 +26,7 @@ const header = el("h2", {}, "Spotify: Your Top Tracks");
 const info = el(
   "p",
   {},
-  'Click "Login with Spotify" to connect your account, then pick a starting rank and click "Update filter" to refresh the vinyl display.'
+  '"Login with Spotify" to connect your account, then select and "Update filter" to refresh the display.'
 );
 const loginBtn = el(
   "button",
