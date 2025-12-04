@@ -164,17 +164,21 @@ class Vinyl {
    * @param {CanvasRenderingContext2D} ctx
    * @private
    */
+  /**
+   * Hover info panel (title / artist / BPM), shown to the SIDE of the record.
+   * Assumes we're already translated+rotated to the vinyl space.
+   * Counter-rotates so it reads horizontally.
+   */
   _drawHoverHud(ctx) {
     const lines = [
       this.trackName || "",
       this.artist ? `by ${this.artist}` : "",
       this.bpm ? `${Math.round(this.bpm)} BPM` : "",
     ].filter(Boolean);
-
     if (!lines.length) return;
 
     ctx.save();
-    // Undo disc rotation so HUD is horizontal
+    // keep HUD horizontal
     ctx.rotate(-this.rotation);
 
     const pad = 10;
@@ -182,7 +186,7 @@ class Vinyl {
     ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
     ctx.textBaseline = "top";
 
-    // Measure widest line
+    // measure
     let w = 0;
     for (const s of lines) w = Math.max(w, ctx.measureText(s).width);
     const lh = fontSize * 1.2;
@@ -191,17 +195,31 @@ class Vinyl {
     const boxW = w + pad * 2;
     const boxH = h + pad * 2;
 
-    // Place just above the record
-    const x = -boxW / 2;
-    const y = -(this.outerRadius + 16) - boxH;
+    // default: to the RIGHT of the record
+    const margin = 16;
+    let x = this.outerRadius + margin; // left edge of box
+    let y = -boxH / 2; // vertically centered
 
-    // Panel
+    // --- optional auto-flip if near right canvas edge ---
+    // We can peek at canvas width from ctx.canvas; if placing at right would
+    // overflow, flip to the LEFT.
+    const canvas = ctx.canvas;
+    if (canvas && typeof canvas.width === "number") {
+      // transform our local (x + boxW, 0) back to canvas coords to check overflow
+      // Since we counter-rotated, local X axis aligns with canvas X axis.
+      const rightCanvasX = this.position.x + (x + boxW) * 1; // scale=1 in our usage
+      if (rightCanvasX + 8 > canvas.width) {
+        x = -(this.outerRadius + margin) - boxW; // flip to left
+      }
+    }
+
+    // panel
     ctx.fillStyle = "rgba(0,0,0,0.7)";
     this._roundedRect(ctx, x, y, boxW, boxH, 8);
     ctx.fill();
 
-    // Text
-    ctx.fillStyle = "#ffffff";
+    // text
+    ctx.fillStyle = "#fff";
     let ty = y + pad;
     for (const s of lines) {
       ctx.fillText(s, x + pad, ty);

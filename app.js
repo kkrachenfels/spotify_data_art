@@ -73,7 +73,9 @@ const filterSection = el(
   el(
     "p",
     { class: "filter-hint" },
-    `Pick the starting rank (up to ${MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1}), then press "Update filter" to fetch 10 tracks from there.`
+    `Pick the starting rank (up to ${
+      MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1
+    }), then press "Update filter" to fetch 10 tracks from there.`
   ),
   el(
     "div",
@@ -89,7 +91,7 @@ const rangeStatus = el(
   { id: "range-status" },
   "Load top tracks to enable the rank filter."
 );
-
+let vinylMouse = { x: -9999, y: -9999 };
 root.appendChild(header);
 root.appendChild(info);
 root.appendChild(loginBtn);
@@ -100,7 +102,10 @@ root.insertBefore(rangeStatus, list);
 
 function applyCurrentRange() {
   const startRank = Number(startRange.value);
-  const offsetRank = Math.max(1, Math.min(startRank, MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1));
+  const offsetRank = Math.max(
+    1,
+    Math.min(startRank, MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1)
+  );
   list.innerHTML = "Loading top tracks...";
   rangeStatus.textContent = "Fetching top tracks from Spotify...";
   fetch(`/top_tracks?offset=${offsetRank}`, { cache: "no-store" })
@@ -112,7 +117,7 @@ function applyCurrentRange() {
       return response.json();
     })
     .then((data) => {
-      const items = (data?.items || []);
+      const items = data?.items || [];
       const shown = Math.min(items.length, SONG_DISPLAY_LIMIT);
       renderVinylScene(items.slice(0, shown));
       const total = items.length;
@@ -176,6 +181,25 @@ function renderVinylScene(tracks) {
     updateVinylColors(colors);
   });
 }
+function getArtistNamesSafe(t) {
+  const a = t?.artists;
+
+  // Array of objects or strings
+  if (Array.isArray(a)) {
+    return a
+      .map((x) => (x && typeof x === "object" ? x.name ?? "" : x ?? ""))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  // Single object with name
+  if (a && typeof a === "object" && typeof a.name === "string") {
+    return a.name;
+  }
+
+  // Common alternate fields some APIs use
+  return t?.artist || t?.primary_artist || t?.artists_name || t?.owner || "";
+}
 
 function initializeVinylScene(container, tracks, colors) {
   stopVinylAnimation();
@@ -194,7 +218,22 @@ function initializeVinylScene(container, tracks, colors) {
   vinylCanvas.style.left = "0";
   container.appendChild(vinylCanvas);
   vinylCtx = vinylCanvas.getContext("2d");
+  // map DOM mouse coords → canvas pixel coords (handles CSS scaling)
+  function onMove(e) {
+    const rect = vinylCanvas.getBoundingClientRect();
+    const scaleX = vinylCanvas.width / rect.width;
+    const scaleY = vinylCanvas.height / rect.height;
+    vinylMouse.x = (e.clientX - rect.left) * scaleX;
+    vinylMouse.y = (e.clientY - rect.top) * scaleY;
+  }
+  function onLeave() {
+    vinylMouse.x = -9999;
+    vinylMouse.y = -9999;
+    vinylCanvas.style.cursor = "default";
+  }
 
+  vinylCanvas.addEventListener("mousemove", onMove);
+  vinylCanvas.addEventListener("mouseleave", onLeave);
   const center = VINYL_CANVAS_SIZE / 2;
   const count = tracks.length;
   const padding = VINYL_OUTER_RADIUS + 20;
@@ -223,9 +262,7 @@ function initializeVinylScene(container, tracks, colors) {
   const requiredLength = (count - 1) * targetDist;
   if (wavePath.totalLength < requiredLength) {
     amplitude =
-      amplitude *
-      requiredLength /
-      Math.max(wavePath.totalLength, 1);
+      (amplitude * requiredLength) / Math.max(wavePath.totalLength, 1);
     wavePath = buildSineArc(
       VINYL_CANVAS_SIZE,
       spacingX,
@@ -242,11 +279,24 @@ function initializeVinylScene(container, tracks, colors) {
       VINYL_INNER_RADIUS,
       colors[i] || DEFAULT_SWATCH_COLOR
     );
-    vinyl.setTrackInfo(
-      `${tracks[i].rank ? `#${tracks[i].rank} ` : ""}${tracks[i].name}`,
-      tracks[i].popularity ?? null
-    );
-    vinyl.setAngularVelocity(0.6 + (i % 3) * 0.15);
+    const rankStr = tracks[i].rank ? `#${tracks[i].rank} ` : "";
+    const title = `${rankStr}${tracks[i].name || ""}`;
+    const artist = getArtistNamesSafe(tracks[i]);
+
+    // If you don’t actually have BPM/tempo yet, keep it null
+    // (your code was using popularity for speed earlier — leave that if you want)
+    const bpm =
+      (typeof tracks[i].bpm === "number" ? tracks[i].bpm : null) ??
+      (typeof tracks[i].tempo === "number" ? tracks[i].tempo : null) ??
+      null;
+
+    // Set meta → title/artist/BPM (BPM also drives spin inside Vinyl)
+    vinyl.setTrackMeta({ title, artist, bpm, spinsPerBeat: 0.05 });
+
+    // Fallback angular speed if no BPM present
+    if (bpm == null) {
+      vinyl.setAngularVelocity(0.6 + (i % 3) * 0.15);
+    }
     vinylObjects.push(vinyl);
   }
 
@@ -259,11 +309,21 @@ function animateVinyls(timestamp) {
   if (!lastVinylTimestamp) lastVinylTimestamp = timestamp;
   const delta = (timestamp - lastVinylTimestamp) / 1000;
   lastVinylTimestamp = timestamp;
+
   vinylCtx.clearRect(0, 0, VINYL_CANVAS_SIZE, VINYL_CANVAS_SIZE);
+
+  let anyHover = false;
+
   vinylObjects.forEach((vinyl) => {
+    // tell each vinyl whether we're hovering it
+    if (vinyl.updateHover(vinylMouse.x, vinylMouse.y)) anyHover = true;
+
     vinyl.update(delta);
     vinyl.draw(vinylCtx);
   });
+
+  vinylCtx.canvas.style.cursor = anyHover ? "pointer" : "default";
+
   vinylAnimationId = requestAnimationFrame(animateVinyls);
 }
 
@@ -295,7 +355,8 @@ function buildSineArc(canvasSize, spacingX, amplitude, radius) {
   for (let i = 0; i <= steps; i += 1) {
     const u = i / steps;
     const x = padding + u * width;
-    const y = center + Math.sin(phaseShift + u * Math.PI * 2) * amplitude - radius / 2;
+    const y =
+      center + Math.sin(phaseShift + u * Math.PI * 2) * amplitude - radius / 2;
     const point = { x, y, length: totalLength };
     if (prevPoint) {
       const dx = x - prevPoint.x;
