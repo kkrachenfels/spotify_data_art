@@ -355,7 +355,9 @@ function renderVinylScene(tracks) {
   initializeVinylScene(
     container,
     selected,
-    selected.map(() => DEFAULT_SWATCH_COLOR)
+  selected.map(
+    () => [DEFAULT_SWATCH_COLOR, DEFAULT_SWATCH_COLOR]
+  )
   );
 
   const colorPromises = selected.map((item) =>
@@ -594,11 +596,17 @@ function stopVinylAnimation() {
   }
 }
 
-function updateVinylColors(colors) {
+function updateVinylColors(colorSets) {
   if (!vinylObjects.length) return;
-  colors.forEach((color, index) => {
+  colorSets.forEach((set, index) => {
+    const colors =
+      Array.isArray(set) && set.length
+        ? set
+        : [DEFAULT_SWATCH_COLOR, DEFAULT_SWATCH_COLOR];
+    const label = colors[0] || DEFAULT_SWATCH_COLOR;
     if (vinylObjects[index]) {
-      vinylObjects[index].labelColor = color;
+      vinylObjects[index].labelColor = label;
+      vinylObjects[index].setSwirlColors(colors);
     }
   });
 }
@@ -721,7 +729,7 @@ function sampleSineArc(path, targetLength) {
 
 // ------------ COLOR UTILS ------------
 function getProminentColor(imageUrl) {
-  if (!imageUrl) return Promise.resolve(null);
+  if (!imageUrl) return Promise.resolve([]);
   if (colorCache.has(imageUrl))
     return Promise.resolve(colorCache.get(imageUrl));
   return new Promise((resolve) => {
@@ -734,8 +742,8 @@ function getProminentColor(imageUrl) {
       canvas.height = size;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
-        colorCache.set(imageUrl, null);
-        resolve(null);
+        colorCache.set(imageUrl, []);
+        resolve([]);
         return;
       }
       ctx.drawImage(img, 0, 0, size, size);
@@ -751,15 +759,16 @@ function getProminentColor(imageUrl) {
       resolve(dominant);
     };
     img.onerror = () => {
-      colorCache.set(imageUrl, null);
-      resolve(null);
+      colorCache.set(imageUrl, []);
+      resolve([]);
     };
     img.src = imageUrl;
   });
 }
 
-function findDominantColor(pixels, k = 3, iterations = 6) {
-  if (!pixels.length) return DEFAULT_SWATCH_COLOR;
+function findDominantColor(pixels, k = 3, iterations = 6, topN = 2) {
+  if (!pixels.length)
+    return Array.from({ length: topN }, () => DEFAULT_SWATCH_COLOR);
   const centers = [];
   for (let i = 0; i < k; i++) centers.push(pixels[(i * 3) % pixels.length]);
   let lastBuckets = [];
@@ -795,15 +804,17 @@ function findDominantColor(pixels, k = 3, iterations = 6) {
     });
     lastBuckets = buckets;
   }
-  let best = 0,
-    center = centers[0];
-  lastBuckets.forEach((b, i) => {
-    if (b.length > best) {
-      best = b.length;
-      center = centers[i];
-    }
-  });
-  return `rgb(${center[0]}, ${center[1]}, ${center[2]})`;
+  const bucketStats = centers.map((center, idx) => ({
+    color: `rgb(${center[0]}, ${center[1]}, ${center[2]})`,
+    count: lastBuckets[idx]?.length ?? 0,
+  }));
+  bucketStats.sort((a, b) => b.count - a.count);
+  const result = [];
+  for (let i = 0; i < topN; i += 1) {
+    if (bucketStats[i]) result.push(bucketStats[i].color);
+    else result.push(DEFAULT_SWATCH_COLOR);
+  }
+  return result;
 }
 
 // ------------ FRUIT PREVIEW CANVAS ------------

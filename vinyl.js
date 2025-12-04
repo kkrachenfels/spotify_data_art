@@ -16,6 +16,7 @@ class Vinyl {
     this.innerRadius = innerRadius;
     this.rotation = 0; // radians
     this.labelColor = labelColor;
+    this.innerSwirlColors = [labelColor, labelColor];
 
     // Motion
     this.velocity = { x: 0, y: 0 };
@@ -68,13 +69,19 @@ class Vinyl {
    * Pass p5's drawingContext when using p5.
    * @param {CanvasRenderingContext2D} ctx
    */
+  setSwirlColors(colors) {
+    if (Array.isArray(colors) && colors.length) {
+      this.innerSwirlColors = colors;
+    }
+  }
+
   draw(ctx) {
     ctx.save();
     ctx.translate(this.position.x, this.position.y);
     ctx.rotate(this.rotation);
 
     if (BUTT_IMAGE.complete) {
-      const size = this.outerRadius * 3;
+      const size = this.outerRadius * 2.9;
       ctx.drawImage(BUTT_IMAGE, -size / 2, -size / 2, size, size);
     }
 
@@ -93,10 +100,40 @@ class Vinyl {
       ctx.stroke();
     }
 
+    // Inner swirl (lollipop-style spiral)
+    const swirlRadius = this.innerRadius * 0.9;
+    const colors =
+      this.innerSwirlColors.length > 0
+        ? this.innerSwirlColors
+        : [this.labelColor, this.labelColor];
+    const spiralTurns = 4;
+    const totalSteps = 160;
+    const lineWidth = Math.max(4, this.innerRadius * 0.08);
+    colors.forEach((color, offsetIndex) => {
+      ctx.beginPath();
+      for (let step = offsetIndex; step <= totalSteps; step += colors.length) {
+        const t = step / totalSteps;
+        const radius = swirlRadius * t;
+        const angle = -Math.PI / 2 + t * spiralTurns * 2 * Math.PI;
+        const x = radius * Math.cos(angle);
+        const y = radius * Math.sin(angle);
+        if (step === offsetIndex) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = "round";
+      ctx.stroke();
+    });
+
     // Inner label
+    const labelRadius = this.innerRadius * 0.6;
     ctx.fillStyle = this.labelColor;
     ctx.beginPath();
-    ctx.arc(0, 0, this.innerRadius, 0, Math.PI * 2);
+    ctx.arc(0, 0, labelRadius, 0, Math.PI * 2);
     ctx.fill();
 
     // Center dot
