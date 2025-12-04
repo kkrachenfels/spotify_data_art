@@ -193,12 +193,28 @@ function initializeVinylScene(container, tracks, colors) {
   vinylCtx = vinylCanvas.getContext("2d");
 
   const center = VINYL_CANVAS_SIZE / 2;
-  const radius = center - VINYL_OUTER_RADIUS - 16;
   const count = tracks.length;
+  const padding = VINYL_OUTER_RADIUS + 20;
+  const availableWidth = VINYL_CANVAS_SIZE - 2 * padding;
+  const spreading = availableWidth / Math.max(count - 1, 1);
+  const baseSpacing = Math.max(spreading, VINYL_OUTER_RADIUS * 2.2);
+  const spacingX = Math.min(baseSpacing, VINYL_OUTER_RADIUS * 3);
+  const frequency = (Math.PI * 2) / Math.max(count, 1);
+  const targetDist = VINYL_OUTER_RADIUS * 2.3;
+  const sinHalf = Math.sin(frequency / 2) || 1;
+  const verticalSpacing = Math.sqrt(
+    Math.max(targetDist * targetDist - spacingX * spacingX, 0)
+  ) / (2 * sinHalf);
+  const amplitude = Math.max(
+    Math.min(verticalSpacing || VINYL_OUTER_RADIUS, VINYL_CANVAS_SIZE / 4),
+    VINYL_OUTER_RADIUS / 2
+  );
   for (let i = 0; i < count; i += 1) {
-    const angle = (Math.PI * 2 * i) / count;
-    const x = center + radius * Math.cos(angle);
-    const y = center + radius * Math.sin(angle);
+    const x = VINYL_OUTER_RADIUS + i * spacingX;
+    const y =
+      center +
+      Math.sin(i * frequency) * amplitude -
+      VINYL_OUTER_RADIUS / 2;
     const vinyl = new Vinyl(
       x,
       y,
