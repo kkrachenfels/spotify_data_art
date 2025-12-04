@@ -1,4 +1,7 @@
 // vinyl.js
+const BUTT_IMAGE = new Image();
+BUTT_IMAGE.src = "assets/caterpillar_butt.png";
+
 class Vinyl {
   /**
    * @param {number} x - center x coordinate
@@ -69,6 +72,11 @@ class Vinyl {
     ctx.save();
     ctx.translate(this.position.x, this.position.y);
     ctx.rotate(this.rotation);
+
+    if (BUTT_IMAGE.complete) {
+      const size = this.outerRadius * 3;
+      ctx.drawImage(BUTT_IMAGE, -size / 2, -size / 2, size, size);
+    }
 
     // Outer ring (vinyl edge)
     ctx.fillStyle = "#0f0f0f";
