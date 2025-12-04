@@ -197,10 +197,10 @@ function applyCurrentRange() {
 
 // ------------ SPIRAL (Path2D + hover) ------------
 // ------------ VINYL DISPLAY ------------
-const VINYL_CANVAS_SIZE = 760;
+const VINYL_CANVAS_SIZE = 970;
 const VINYL_COUNT = 15;
-const VINYL_OUTER_RADIUS = 58;
-const VINYL_INNER_RADIUS = 26;
+const VINYL_OUTER_RADIUS = 72;
+const VINYL_INNER_RADIUS = 32;
 let vinylCanvas = null;
 let vinylCtx = null;
 let vinylAnimationId = null;
@@ -437,10 +437,16 @@ function updateVinylColors(colors) {
 }
 
 function buildSineArc(canvasSize, spacingX, amplitude, radius) {
-  const center = canvasSize / 2;
   const padding = radius + 20;
   const width = canvasSize - 2 * padding;
   const phaseShift = -Math.PI / 2;
+  const bottomY = canvasSize - padding - radius - 4;
+  const topBound = padding + radius + 4;
+  const verticalSpan = Math.max(bottomY - topBound, 0);
+  const effectiveAmplitude = Math.min(
+    Math.max(amplitude, 0),
+    verticalSpan / 2
+  );
   const steps = 600;
   const points = [];
   let totalLength = 0;
@@ -448,8 +454,10 @@ function buildSineArc(canvasSize, spacingX, amplitude, radius) {
   for (let i = 0; i <= steps; i += 1) {
     const u = i / steps;
     const x = padding + u * width;
+    // Start the wave at the bottom of the canvas and move upward from there.
     const y =
-      center + Math.sin(phaseShift + u * Math.PI * 2) * amplitude - radius / 2;
+      bottomY -
+      effectiveAmplitude * (1 + Math.sin(phaseShift + u * Math.PI * 2));
     const point = { x, y, length: totalLength };
     if (prevPoint) {
       const dx = x - prevPoint.x;

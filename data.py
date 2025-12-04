@@ -35,7 +35,7 @@ AUTH_URL = 'https://accounts.spotify.com/authorize'
 TOKEN_URL = 'https://accounts.spotify.com/api/token'
 API_BASE = 'https://api.spotify.com/v1'
 MAX_TOP_TRACKS = 100
-TOP_TRACKS_WINDOW = 15
+TOP_TRACKS_WINDOW = 10
 
 
 # ------------------------- helpers -------------------------
