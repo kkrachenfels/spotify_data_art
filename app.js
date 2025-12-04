@@ -257,13 +257,24 @@ function getArtistNamesSafe(t) {
       .join(", ");
   }
 
+  if (a && typeof a === "string") {
+    return a;
+  }
+
   // Single object with name
   if (a && typeof a === "object" && typeof a.name === "string") {
     return a.name;
   }
 
   // Common alternate fields some APIs use
-  return t?.artist || t?.primary_artist || t?.artists_name || t?.owner || "";
+  return (
+    t?.artist ||
+    t?.artists ||
+    t?.primary_artist ||
+    t?.artists_name ||
+    t?.owner ||
+    ""
+  );
 }
 
 function initializeVinylScene(container, tracks, colors) {
@@ -347,6 +358,11 @@ function initializeVinylScene(container, tracks, colors) {
     const rankStr = tracks[i].rank ? `#${tracks[i].rank} ` : "";
     const title = `${rankStr}${tracks[i].name || ""}`;
     const artist = getArtistNamesSafe(tracks[i]);
+    const rawAlbum = tracks[i]?.album;
+    const album =
+      typeof rawAlbum === "string"
+        ? rawAlbum
+        : rawAlbum?.name || tracks[i]?.album_name || "";
 
     // If you don’t actually have BPM/tempo yet, keep it null
     // (your code was using popularity for speed earlier — leave that if you want)
@@ -355,8 +371,20 @@ function initializeVinylScene(container, tracks, colors) {
       (typeof tracks[i].tempo === "number" ? tracks[i].tempo : null) ??
       null;
 
+    const derivedBpm = Math.max(
+      70,
+      Math.round((tracks[i]?.popularity ?? 60) * 1.25 + 5)
+    );
+
     // Set meta → title/artist/BPM (BPM also drives spin inside Vinyl)
-    vinyl.setTrackMeta({ title, artist, bpm, spinsPerBeat: 0.05 });
+    vinyl.setTrackMeta({
+      title,
+      artist,
+      album,
+      bpm,
+      spinsPerBeat: 0.05,
+      hoverBpm: bpm ?? derivedBpm,
+    });
 
     // Fallback angular speed if no BPM present
     if (bpm == null) {

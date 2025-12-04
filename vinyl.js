@@ -21,7 +21,9 @@ class Vinyl {
     // Track meta
     this.trackName = "";
     this.artist = "";
+    this.album = "";
     this.bpm = 0;
+    this.hoverBpm = null;
 
     // Hover state
     this._hovered = false;
@@ -170,10 +172,12 @@ class Vinyl {
    * Counter-rotates so it reads horizontally.
    */
   _drawHoverHud(ctx) {
+    const hoverBpm = this.hoverBpm ?? (this.bpm ? Math.round(this.bpm) : null);
     const lines = [
       this.trackName || "",
       this.artist ? `by ${this.artist}` : "",
-      this.bpm ? `${Math.round(this.bpm)} BPM` : "",
+      this.album ? `Album: ${this.album}` : "",
+      hoverBpm ? `${hoverBpm} BPM` : "",
     ].filter(Boolean);
     if (!lines.length) return;
 
@@ -290,10 +294,18 @@ class Vinyl {
    * Set title/artist/bpm (and optional spinsPerBeat) in one call.
    * @param {{title?: string, artist?: string, bpm?: number, spinsPerBeat?: number}} meta
    */
-  setTrackMeta({ title, artist, bpm, spinsPerBeat = 0.05 } = {}) {
+  setTrackMeta(
+    { title, artist, album, bpm, spinsPerBeat = 0.05, hoverBpm } = {}
+  ) {
     if (title != null) this.trackName = title;
     if (artist != null) this.artist = artist;
+    if (album != null) this.album = album;
     if (bpm != null) this.setBpm(bpm, spinsPerBeat);
+    if (hoverBpm != null) {
+      this.hoverBpm = hoverBpm;
+    } else if (bpm != null) {
+      this.hoverBpm = Math.round(bpm);
+    }
   }
 
   /**
