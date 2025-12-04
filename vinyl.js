@@ -92,7 +92,7 @@ class Vinyl {
     ctx.save();
 
     // Text style
-    const fontSize = this.outerRadius * 0.12;
+    const fontSize = this.outerRadius * 0.16;
     ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";

@@ -129,7 +129,7 @@ function applyCurrentRange() {
 
 // ------------ SPIRAL (Path2D + hover) ------------
 // ------------ VINYL DISPLAY ------------
-const VINYL_CANVAS_SIZE = 520;
+const VINYL_CANVAS_SIZE = 760;
 const VINYL_COUNT = 15;
 const VINYL_OUTER_RADIUS = 58;
 const VINYL_INNER_RADIUS = 26;
@@ -145,7 +145,10 @@ function renderVinylScene(tracks) {
   container.style.position = "relative";
   container.style.width = `${VINYL_CANVAS_SIZE}px`;
   container.style.height = `${VINYL_CANVAS_SIZE}px`;
-  container.style.margin = "16px auto";
+  container.style.margin = "16px 0 16px 0";
+  container.style.alignSelf = "flex-start";
+  container.style.paddingLeft = "16px";
+  container.style.width = `${VINYL_CANVAS_SIZE + 40}px`;
   container.style.border = "1px solid #eee";
   container.style.borderRadius = "12px";
   container.style.backgroundColor = "#fff";
@@ -193,18 +196,55 @@ function initializeVinylScene(container, tracks, colors) {
   vinylCtx = vinylCanvas.getContext("2d");
 
   const center = VINYL_CANVAS_SIZE / 2;
-  const radius = center - VINYL_OUTER_RADIUS - 16;
   const count = tracks.length;
+  const padding = VINYL_OUTER_RADIUS + 20;
+  const availableWidth = VINYL_CANVAS_SIZE - 2 * padding;
+  const spreading = availableWidth / Math.max(count - 1, 1);
+  const targetDist = VINYL_OUTER_RADIUS * 2.4;
+  const baseSpacing = Math.max(spreading, VINYL_OUTER_RADIUS * 2.4);
+  const spacingX = Math.min(baseSpacing, targetDist * 0.75);
+  const frequency = (Math.PI * 1) / Math.max(count * 2, 1);
+  const sinHalf = Math.sin(frequency / 2) || 1;
+  const maxVerticalDiff = Math.sqrt(
+    Math.max(targetDist * targetDist - spacingX * spacingX, 0)
+  );
+  const baseAmplitude = (maxVerticalDiff / (2 * sinHalf || 1)) * 1.2;
+  let amplitude = Math.min(
+    Math.max(baseAmplitude * 1, VINYL_OUTER_RADIUS * 1.1),
+    VINYL_CANVAS_SIZE / 2 - VINYL_OUTER_RADIUS
+  );
+
+  let wavePath = buildSineArc(
+    VINYL_CANVAS_SIZE,
+    spacingX,
+    amplitude,
+    VINYL_OUTER_RADIUS
+  );
+  const requiredLength = (count - 1) * targetDist;
+  if (wavePath.totalLength < requiredLength) {
+    amplitude =
+      amplitude *
+      requiredLength /
+      Math.max(wavePath.totalLength, 1);
+    wavePath = buildSineArc(
+      VINYL_CANVAS_SIZE,
+      spacingX,
+      amplitude,
+      VINYL_OUTER_RADIUS
+    );
+  }
   for (let i = 0; i < count; i += 1) {
-    const angle = (Math.PI * 2 * i) / count;
-    const x = center + radius * Math.cos(angle);
-    const y = center + radius * Math.sin(angle);
+    const pathPoint = sampleSineArc(wavePath, i * targetDist);
     const vinyl = new Vinyl(
-      x,
-      y,
+      pathPoint.x,
+      pathPoint.y,
       VINYL_OUTER_RADIUS,
       VINYL_INNER_RADIUS,
       colors[i] || DEFAULT_SWATCH_COLOR
+    );
+    vinyl.setTrackInfo(
+      `${tracks[i].rank ? `#${tracks[i].rank} ` : ""}${tracks[i].name}`,
+      tracks[i].popularity ?? null
     );
     vinyl.setAngularVelocity(0.6 + (i % 3) * 0.15);
     vinylObjects.push(vinyl);
@@ -241,6 +281,56 @@ function updateVinylColors(colors) {
       vinylObjects[index].labelColor = color;
     }
   });
+}
+
+function buildSineArc(canvasSize, spacingX, amplitude, radius) {
+  const center = canvasSize / 2;
+  const padding = radius + 20;
+  const width = canvasSize - 2 * padding;
+  const phaseShift = -Math.PI / 2;
+  const steps = 600;
+  const points = [];
+  let totalLength = 0;
+  let prevPoint = null;
+  for (let i = 0; i <= steps; i += 1) {
+    const u = i / steps;
+    const x = padding + u * width;
+    const y = center + Math.sin(phaseShift + u * Math.PI * 2) * amplitude - radius / 2;
+    const point = { x, y, length: totalLength };
+    if (prevPoint) {
+      const dx = x - prevPoint.x;
+      const dy = y - prevPoint.y;
+      totalLength += Math.sqrt(dx * dx + dy * dy);
+      point.length = totalLength;
+    }
+    points.push(point);
+    prevPoint = point;
+  }
+  return { points, totalLength };
+}
+
+function sampleSineArc(path, targetLength) {
+  const { points } = path;
+  if (!points.length) {
+    return { x: 0, y: 0 };
+  }
+  const total = path.totalLength;
+  const clamped = Math.max(0, Math.min(targetLength, total));
+  if (clamped === 0) return { x: points[0].x, y: points[0].y };
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    if (curr.length >= clamped) {
+      const segment = curr.length - prev.length;
+      const ratio = segment === 0 ? 0 : (clamped - prev.length) / segment;
+      return {
+        x: prev.x + (curr.x - prev.x) * ratio,
+        y: prev.y + (curr.y - prev.y) * ratio,
+      };
+    }
+  }
+  const last = points[points.length - 1];
+  return { x: last.x, y: last.y };
 }
 
 // ------------ COLOR UTILS ------------
