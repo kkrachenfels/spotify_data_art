@@ -30,12 +30,18 @@ const info = el(
 );
 const loginBtn = el(
   "button",
-  { onclick: () => (window.location = "/login") },
+  {
+    class: "compact-button auth-button",
+    onclick: () => (window.location = "/login"),
+  },
   "Login with Spotify"
 );
 const logoutBtn = el(
   "button",
-  { onclick: () => (window.location = "/logout") },
+  {
+    class: "compact-button auth-button",
+    onclick: () => (window.location = "/logout"),
+  },
   "Logout"
 );
 
@@ -57,10 +63,27 @@ const colorCache = new Map();
 const DEFAULT_SWATCH_COLOR = "#555";
 const applyRangeBtn = el(
   "button",
-  { id: "apply-range", onclick: applyCurrentRange },
+  { id: "apply-range", class: "compact-button", onclick: applyCurrentRange },
   "Update filter"
 );
 const MAX_TOP_TRACKS = 100;
+const FRUIT_CANVAS_WIDTH = 280;
+const FRUIT_CANVAS_HEIGHT = 360;
+const FRUIT_SPAWN_INTERVAL = 2000;
+const FRUIT_ASSETS = {
+  apple: "assets/caterpillar_apple.png",
+  pear: "assets/caterpillar_pear.png",
+  orange: "assets/caterpillar_orange.png",
+  grape: "assets/caterpillar_grape.png",
+  strawberry: "assets/caterpillar_strawberry.png",
+};
+const fruitImageMap = {};
+Object.entries(FRUIT_ASSETS).forEach(([name, src]) => {
+  const img = new Image();
+  img.src = src;
+  fruitImageMap[name] = img;
+});
+const FRUIT_IMAGE_VALUES = Object.values(fruitImageMap);
 
 startRange.addEventListener("input", () => {
   startLabel.textContent = `From rank: ${startRange.value}`;
@@ -92,13 +115,53 @@ const rangeStatus = el(
   "Load top tracks to enable the rank filter."
 );
 let vinylMouse = { x: -9999, y: -9999 };
+const controlColumn = el(
+  "div",
+  { class: "control-column" },
+  filterSection,
+  rangeStatus
+);
+const fruitCanvas = document.createElement("canvas");
+fruitCanvas.width = FRUIT_CANVAS_WIDTH;
+fruitCanvas.height = FRUIT_CANVAS_HEIGHT;
+const fruitCtx = fruitCanvas.getContext("2d");
+const fruitCaption = el(
+  "p",
+  { class: "fruit-caption" },
+  "Load top tracks to start the fruit preview."
+);
+const fruitPanel = el(
+  "div",
+  { class: "fruit-panel" },
+  el("p", { class: "panel-title" }, "Song fruit preview"),
+  fruitCanvas,
+  fruitCaption
+);
+const vinylPanel = el("div", { class: "vinyl-panel" }, list);
+const visualColumn = el(
+  "div",
+  { class: "visual-column" },
+  fruitPanel,
+  vinylPanel
+);
+const contentLayout = el(
+  "div",
+  { class: "content-layout" },
+  controlColumn,
+  visualColumn
+);
+let fruitQueue = [];
+let fruitSpawnIndex = 0;
+let fruitIntervalId = null;
+let fruitObjects = [];
+let fruitAnimationId = null;
+let lastFruitTimestamp = null;
+
 root.appendChild(header);
 root.appendChild(info);
 root.appendChild(loginBtn);
 root.appendChild(logoutBtn);
-root.appendChild(list);
-root.insertBefore(filterSection, list);
-root.insertBefore(rangeStatus, list);
+root.appendChild(contentLayout);
 
 function applyCurrentRange() {
   const startRank = Number(startRange.value);
@@ -161,10 +224,12 @@ function renderVinylScene(tracks) {
 
   if (!tracks.length) {
     list.innerHTML = "No tracks in that rank range.";
+    stopFruitSequence();
     return;
   }
 
   const selected = tracks.slice(0, VINYL_COUNT);
+  resetFruitSequence(selected);
   initializeVinylScene(
     container,
     selected,
@@ -481,6 +546,107 @@ function findDominantColor(pixels, k = 3, iterations = 6) {
   return `rgb(${center[0]}, ${center[1]}, ${center[2]})`;
 }
 
+// ------------ FRUIT PREVIEW CANVAS ------------
+function pickRandomFruitImage() {
+  if (!FRUIT_IMAGE_VALUES.length) return null;
+  const index = Math.floor(Math.random() * FRUIT_IMAGE_VALUES.length);
+  return FRUIT_IMAGE_VALUES[index];
+}
+
+function resetFruitSequence(tracks) {
+  stopFruitInterval();
+  fruitQueue = tracks.slice(0, Math.min(tracks.length, VINYL_COUNT));
+  fruitSpawnIndex = 0;
+  fruitObjects.length = 0;
+  if (!fruitQueue.length) {
+    fruitCaption.textContent = "No tracks to preview.";
+    if (fruitCtx)
+      fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
+    return;
+  }
+  spawnNextFruit();
+  if (fruitQueue.length > 1) {
+    fruitIntervalId = setInterval(() => {
+      spawnNextFruit();
+    }, FRUIT_SPAWN_INTERVAL);
+  }
+}
+
+function stopFruitSequence() {
+  stopFruitInterval();
+  fruitObjects.length = 0;
+  if (fruitCtx)
+    fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
+  fruitCaption.textContent = "No tracks to preview.";
+}
+
+function spawnNextFruit() {
+  if (fruitSpawnIndex >= fruitQueue.length) {
+    stopFruitInterval();
+    return;
+  }
+  const track = fruitQueue[fruitSpawnIndex];
+  const image = pickRandomFruitImage();
+  const fruit = new Fruit(
+    FRUIT_CANVAS_WIDTH / 2,
+    FRUIT_CANVAS_HEIGHT / 2,
+    image,
+    120 + Math.random() * 60
+  );
+  const popularity = track.popularity ?? 75;
+  const bpm = Math.max(70, Math.min(200, Math.round(popularity * 1.8)));
+  fruit.setTrackInfo(
+    `${track.rank ? `#${track.rank} ` : ""}${track.name}`,
+    bpm
+  );
+  fruit.setPulseStyle(
+    0.92,
+    1.08,
+    (fruitSpawnIndex / Math.max(fruitQueue.length, 1)) * Math.PI
+  );
+  fruitObjects.splice(0, fruitObjects.length, fruit);
+  fruitCaption.textContent = `${track.rank ? `#${track.rank} ` : ""}${
+    track.name
+  }`;
+  fruitSpawnIndex += 1;
+  if (fruitSpawnIndex >= fruitQueue.length) {
+    stopFruitInterval();
+  }
+}
+
+function stopFruitInterval() {
+  if (fruitIntervalId) {
+    clearInterval(fruitIntervalId);
+    fruitIntervalId = null;
+  }
+}
+
+function animateFruits(timestamp) {
+  if (!fruitCtx) return;
+  if (!lastFruitTimestamp) lastFruitTimestamp = timestamp;
+  const delta = (timestamp - lastFruitTimestamp) / 1000;
+  lastFruitTimestamp = timestamp;
+  fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
+  fruitObjects.forEach((fruit) => {
+    fruit.update(delta);
+    fruit.draw(fruitCtx);
+  });
+  fruitAnimationId = requestAnimationFrame(animateFruits);
+}
+
+function startFruitAnimation() {
+  if (fruitAnimationId) return;
+  fruitAnimationId = requestAnimationFrame(animateFruits);
+}
+
+function stopFruitAnimation() {
+  if (fruitAnimationId) {
+    cancelAnimationFrame(fruitAnimationId);
+    fruitAnimationId = null;
+  }
+  lastFruitTimestamp = null;
+}
+
 function resetRankControls() {
   startRange.min = 1;
   const maxStart = MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1;
@@ -495,4 +661,5 @@ document.addEventListener("DOMContentLoaded", () => {
   resetRankControls();
   rangeStatus.textContent =
     'Rank range ready. Choose a window and click "Update filter".';
+  startFruitAnimation();
 });
