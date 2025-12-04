@@ -59,7 +59,7 @@ const startRange = el("input", {
 });
 const SONG_DISPLAY_LIMIT = 15;
 // ------------ VINYL DISPLAY ------------
-const VINYL_CANVAS_WIDTH = 1220;
+const VINYL_CANVAS_WIDTH = 1260;
 const VINYL_CANVAS_HEIGHT = 760;
 const VINYL_COUNT = 15;
 const VINYL_OUTER_RADIUS = 68;
@@ -70,7 +70,6 @@ let vinylAnimationId = null;
 let vinylObjects = [];
 let vinylDrawOrder = [];
 let lastVinylTimestamp = null;
-const WAVE_START_OFFSET = 80;
 
 const colorCache = new Map();
 const DEFAULT_SWATCH_COLOR = "#555";
@@ -113,9 +112,54 @@ const CATERPILLAR_BUTT_SIZE = {
   height: VINYL_OUTER_RADIUS * 2.5,
 };
 const SPRITE_EDGE_MARGIN = 12;
+const CATERPILLAR_CANVAS_MARGIN = VINYL_OUTER_RADIUS;
+const WAVE_START_OFFSET = FRUIT_CANVAS_WIDTH / 3; // + CATERPILLAR_CANVAS_MARGIN;
+
+class CaterpillarSprite {
+  constructor(src, width, height) {
+    this.image = new Image();
+    this.image.src = src;
+    this.width = width;
+    this.height = height;
+    this.ready = false;
+    this.position = null;
+    this.image.crossOrigin = "Anonymous";
+    this.image.onload = () => {
+      this.ready = true;
+    };
+    this.image.onerror = () => {
+      this.ready = false;
+    };
+  }
+
+  setPosition(point) {
+    this.position = point;
+  }
+
+  draw(ctx) {
+    if (!this.ready || !this.position) return;
+    const { x, y } = this.position;
+    ctx.drawImage(
+      this.image,
+      x - this.width / 2,
+      y - this.height / 2,
+      this.width,
+      this.height
+    );
+  }
+}
+
 const caterpillarSprites = {
-  head: createCaterpillarSprite(CATERPILLAR_HEAD_SRC, CATERPILLAR_HEAD_SIZE),
-  butt: createCaterpillarSprite(CATERPILLAR_BUTT_SRC, CATERPILLAR_BUTT_SIZE),
+  head: new CaterpillarSprite(
+    CATERPILLAR_HEAD_SRC,
+    CATERPILLAR_HEAD_SIZE.width,
+    CATERPILLAR_HEAD_SIZE.height
+  ),
+  butt: new CaterpillarSprite(
+    CATERPILLAR_BUTT_SRC,
+    CATERPILLAR_BUTT_SIZE.width,
+    CATERPILLAR_BUTT_SIZE.height
+  ),
 };
 
 startRange.addEventListener("input", () => {
@@ -396,7 +440,7 @@ function initializeVinylScene(container, tracks, colors) {
   const targetDist = VINYL_OUTER_RADIUS * 2.1;
   const baseSpacing = Math.max(spreading, VINYL_OUTER_RADIUS * 2.4);
   const spacingX = Math.min(baseSpacing, targetDist * 0.75);
-  const frequency = (Math.PI * 1) / Math.max(count * 2, 1);
+  const frequency = (Math.PI * 1) / Math.max(count * 10, 1);
   const sinHalf = Math.sin(frequency / 2) || 1;
   const maxVerticalDiff = Math.sqrt(
     Math.max(targetDist * targetDist - spacingX * spacingX, 0)
@@ -433,7 +477,8 @@ function initializeVinylScene(container, tracks, colors) {
   layoutSequence.push({
     kind: "head",
     length: -(entitySpacing + headExtraGap),
-    clampMargin: WAVE_START_OFFSET,
+    clampMargin:
+      CATERPILLAR_CANVAS_MARGIN + CATERPILLAR_HEAD_SIZE.width / 2 + 8,
   });
   tracks.forEach((track, idx) => {
     layoutSequence.push({
@@ -446,7 +491,8 @@ function initializeVinylScene(container, tracks, colors) {
   layoutSequence.push({
     kind: "butt",
     length: requiredLength + entitySpacing,
-    clampMargin: WAVE_START_OFFSET,
+    clampMargin:
+      CATERPILLAR_CANVAS_MARGIN + CATERPILLAR_BUTT_SIZE.width / 2 + 8,
   });
 
   const drawEntries = [];
@@ -527,7 +573,7 @@ function animateVinyls(timestamp) {
 
   vinylDrawOrder.forEach((entry) => {
     if (entry.type === "sprite") {
-      drawCaterpillarSprite(vinylCtx, entry.sprite);
+      entry.sprite.draw(vinylCtx);
       return;
     }
     const vinyl = entry.vinyl;
@@ -559,40 +605,8 @@ function updateVinylColors(colors) {
 
 function clearCaterpillarSprites() {
   Object.values(caterpillarSprites).forEach((sprite) => {
-    if (sprite) sprite.position = null;
+    if (sprite) sprite.setPosition(null);
   });
-}
-
-function drawCaterpillarSprite(ctx, sprite) {
-  if (!sprite || !sprite.ready || !sprite.position) return;
-  const { x, y } = sprite.position;
-  ctx.drawImage(
-    sprite.image,
-    x - sprite.width / 2,
-    y - sprite.height / 2,
-    sprite.width,
-    sprite.height
-  );
-}
-
-function createCaterpillarSprite(src, { width, height }) {
-  const image = new Image();
-  image.crossOrigin = "Anonymous";
-  const sprite = {
-    image,
-    width: width || 140,
-    height: height || 110,
-    ready: false,
-    position: null,
-  };
-  image.onload = () => {
-    sprite.ready = true;
-  };
-  image.onerror = () => {
-    sprite.ready = false;
-  };
-  image.src = src;
-  return sprite;
 }
 
 function clamp(value, min, max) {
