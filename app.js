@@ -1,7 +1,5 @@
 // Frontend for Spotify Top Tracks (rank-based). Keeps your Path2D + isPointInStroke spiral.
 
-
-
 function el(tag, props = {}, ...children) {
   const e = document.createElement(tag);
   Object.entries(props).forEach(([k, v]) => {
@@ -60,7 +58,6 @@ const startRange = el("input", {
   disabled: true,
 });
 const SONG_DISPLAY_LIMIT = 15;
-
 // ------------ VINYL DISPLAY ------------
 const VINYL_CANVAS_WIDTH = 1220;
 const VINYL_CANVAS_HEIGHT = 760;
@@ -125,31 +122,96 @@ startRange.addEventListener("input", () => {
   startLabel.textContent = `From rank: ${startRange.value}`;
 });
 
+// --- TIME RANGE STATE + BUTTONS ---
+
+// pick your default: "short_term" | "medium_term" | "long_term"
+let currentTimeRange = "long_term";
+
+function setTimeRange(range) {
+  currentTimeRange = range;
+
+  // Update button active state
+  document.querySelectorAll(".time-range-button").forEach((btn) => {
+    const r = btn.getAttribute("data-range");
+    btn.classList.toggle("active", r === range);
+  });
+
+  // Re-fetch using current slider + new time window
+  applyCurrentRange();
+}
+
+const timeRangeControls = el(
+  "div",
+  { class: "time-range-controls" },
+  el("span", { class: "time-range-label" }, "Time window: "),
+  el(
+    "button",
+    {
+      class: "compact-button time-range-button",
+      "data-range": "short_term",
+      onclick: () => setTimeRange("short_term"),
+    },
+    "1 month"
+  ),
+  el(
+    "button",
+    {
+      class: "compact-button time-range-button",
+      "data-range": "medium_term",
+      onclick: () => setTimeRange("medium_term"),
+    },
+    "6 months"
+  ),
+  el(
+    "button",
+    {
+      class: "compact-button time-range-button active",
+      "data-range": "long_term",
+      onclick: () => setTimeRange("long_term"),
+    },
+    "1 year"
+  ),
+  el(
+    "button",
+    {
+      class: "compact-button time-range-button",
+      "data-range": "long_term",
+      onclick: () => setTimeRange("long_term"),
+    },
+    "All time"
+  )
+);
+
+// --- FILTER SECTION (now can safely use timeRangeControls) ---
+
 const filterSection = el(
   "section",
   { id: "date-filter" },
-  el("h3", {}, "Filter top tracks by rank"),
+  el("h3", {}, "Filter top tracks"),
+  timeRangeControls,
   el(
     "p",
     { class: "filter-hint" },
-    `Pick the starting rank (up to ${
+    `Pick a time window and starting rank (up to ${
       MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1
-    }), then press "Update filter" to fetch 10 tracks from there.`
+    }), then press "Update filter" to fetch tracks from there.`
   ),
   el(
     "div",
     { class: "slider-control" },
-    el("label", { for: "start-range" }, "From"),
+    el("label", { for: "start-range" }, "From rank"),
     startLabel,
     startRange
   ),
   applyRangeBtn
 );
+
 const rangeStatus = el(
   "p",
   { id: "range-status" },
   "Load top tracks to enable the rank filter."
 );
+
 let vinylMouse = { x: -9999, y: -9999 };
 const floatingControls = el(
   "div",
@@ -161,11 +223,7 @@ const fruitCanvas = document.createElement("canvas");
 fruitCanvas.width = FRUIT_CANVAS_WIDTH;
 fruitCanvas.height = FRUIT_CANVAS_HEIGHT;
 const fruitCtx = fruitCanvas.getContext("2d");
-const fruitPanel = el(
-  "div",
-  { class: "fruit-panel" },
-  fruitCanvas
-);
+const fruitPanel = el("div", { class: "fruit-panel" }, fruitCanvas);
 const vinylPanel = el("div", { class: "vinyl-panel" }, list);
 const visualColumn = el(
   "div",
@@ -173,11 +231,7 @@ const visualColumn = el(
   fruitPanel,
   vinylPanel
 );
-const contentLayout = el(
-  "div",
-  { class: "content-layout" },
-  visualColumn
-);
+const contentLayout = el("div", { class: "content-layout" }, visualColumn);
 let fruitQueue = [];
 let fruitSpawnIndex = 0;
 let fruitIntervalId = null;
@@ -200,7 +254,13 @@ function applyCurrentRange() {
   );
   list.innerHTML = "Loading top tracks...";
   rangeStatus.textContent = "Fetching top tracks from Spotify...";
-  fetch(`/top_tracks?offset=${offsetRank}`, { cache: "no-store" })
+
+  fetch(
+    `/top_tracks?offset=${offsetRank}&time_range=${encodeURIComponent(
+      currentTimeRange
+    )}`,
+    { cache: "no-store" }
+  )
     .then(async (response) => {
       if (!response.ok) {
         const text = await response.text();
@@ -223,7 +283,6 @@ function applyCurrentRange() {
       rangeStatus.textContent = err.message || "Unable to load top tracks.";
     });
 }
-
 
 function renderVinylScene(tracks) {
   list.innerHTML = "";
@@ -597,10 +656,7 @@ function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
   const bottomY = canvasHeight - verticalPadding - radius - 4;
   const topBound = verticalPadding + radius + 4;
   const verticalSpan = Math.max(bottomY - topBound, 0);
-  const effectiveAmplitude = Math.min(
-    Math.max(amplitude, 0),
-    verticalSpan / 2
-  );
+  const effectiveAmplitude = Math.min(Math.max(amplitude, 0), verticalSpan / 2);
   const steps = 600;
   const points = [];
   let totalLength = 0;

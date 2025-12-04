@@ -134,13 +134,19 @@ def top_tracks():
     start_rank = max(1, min(requested_start, max_start))
     spotify_offset = max(0, start_rank - 1)
 
+        # read time_range from query (?time_range=short_term|medium_term|long_term)
+    requested_time_range = request.args.get('time_range', 'long_term')
+    if requested_time_range not in ('short_term', 'medium_term', 'long_term'):
+        requested_time_range = 'long_term'
+
     try:
         items, _ = _fetch_top_tracks_page(
             headers,
             offset=spotify_offset,
             limit=TOP_TRACKS_WINDOW,
-            time_range='long_term'
+            time_range=requested_time_range,
         )
+
     except Exception as err:
         return jsonify({'error': 'spotify_api_failed', 'details': str(err)}), 500
 
