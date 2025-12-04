@@ -62,7 +62,7 @@ const startRange = el("input", {
 const SONG_DISPLAY_LIMIT = 15;
 
 // ------------ VINYL DISPLAY ------------
-const VINYL_CANVAS_WIDTH = 1200;
+const VINYL_CANVAS_WIDTH = 1220;
 const VINYL_CANVAS_HEIGHT = 760;
 const VINYL_COUNT = 15;
 const VINYL_OUTER_RADIUS = 68;
@@ -73,6 +73,7 @@ let vinylAnimationId = null;
 let vinylObjects = [];
 let vinylDrawOrder = [];
 let lastVinylTimestamp = null;
+const WAVE_START_OFFSET = 80;
 
 const colorCache = new Map();
 const DEFAULT_SWATCH_COLOR = "#555";
@@ -112,6 +113,7 @@ const CATERPILLAR_BUTT_SIZE = {
   width: VINYL_OUTER_RADIUS * 2.5,
   height: VINYL_OUTER_RADIUS * 2.5,
 };
+const SPRITE_EDGE_MARGIN = 12;
 const caterpillarSprites = {
   head: createCaterpillarSprite(CATERPILLAR_HEAD_SRC, CATERPILLAR_HEAD_SIZE),
   butt: createCaterpillarSprite(CATERPILLAR_BUTT_SRC, CATERPILLAR_BUTT_SIZE),
@@ -337,7 +339,7 @@ function initializeVinylScene(container, tracks, colors) {
   const padding = VINYL_OUTER_RADIUS + 20;
   const availableWidth = VINYL_CANVAS_WIDTH - 2 * padding;
   const spreading = availableWidth / Math.max(count - 1, 1);
-  const targetDist = VINYL_OUTER_RADIUS * 2.4;
+  const targetDist = VINYL_OUTER_RADIUS * 2.1;
   const baseSpacing = Math.max(spreading, VINYL_OUTER_RADIUS * 2.4);
   const spacingX = Math.min(baseSpacing, targetDist * 0.75);
   const frequency = (Math.PI * 1) / Math.max(count * 2, 1);
@@ -372,8 +374,13 @@ function initializeVinylScene(container, tracks, colors) {
   }
 
   const entitySpacing = targetDist;
+  const headExtraGap = 50;
   const layoutSequence = [];
-  layoutSequence.push({ kind: "head", length: -entitySpacing });
+  layoutSequence.push({
+    kind: "head",
+    length: -(entitySpacing + headExtraGap),
+    clampMargin: WAVE_START_OFFSET,
+  });
   tracks.forEach((track, idx) => {
     layoutSequence.push({
       kind: "vinyl",
@@ -382,7 +389,11 @@ function initializeVinylScene(container, tracks, colors) {
       color: colors[idx] || DEFAULT_SWATCH_COLOR,
     });
   });
-  layoutSequence.push({ kind: "butt", length: requiredLength + entitySpacing });
+  layoutSequence.push({
+    kind: "butt",
+    length: requiredLength + entitySpacing,
+    clampMargin: WAVE_START_OFFSET,
+  });
 
   const drawEntries = [];
   layoutSequence.forEach((entry) => {
@@ -393,8 +404,8 @@ function initializeVinylScene(container, tracks, colors) {
           ? caterpillarSprites.head
           : caterpillarSprites.butt;
       if (sprite) {
-        const pos =
-          clampSpritePosition(pathPoint, sprite, padding) || pathPoint;
+        const margin = entry.clampMargin ?? padding;
+        const pos = clampSpritePosition(pathPoint, sprite, margin) || pathPoint;
         sprite.position = pos;
         drawEntries.push({ type: "sprite", sprite });
       }
@@ -583,7 +594,10 @@ function offsetAlongPath(base, neighbor, distance, forward = true) {
 function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
   const horizontalPadding = radius + 20;
   const verticalPadding = radius + 20;
-  const width = canvasWidth - 2 * horizontalPadding;
+  const width = Math.max(
+    canvasWidth - 2 * horizontalPadding - WAVE_START_OFFSET,
+    0
+  );
   const phaseShift = -Math.PI / 2;
   const bottomY = canvasHeight - verticalPadding - radius - 4;
   const topBound = verticalPadding + radius + 4;
@@ -598,7 +612,7 @@ function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
   let prevPoint = null;
   for (let i = 0; i <= steps; i += 1) {
     const u = i / steps;
-    const x = horizontalPadding + u * width;
+    const x = horizontalPadding + WAVE_START_OFFSET + u * width;
     // Start the wave at the bottom of the canvas and move upward from there.
     const y =
       bottomY -
