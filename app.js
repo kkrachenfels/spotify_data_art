@@ -51,7 +51,7 @@ const startRange = el("input", {
   value: 1,
   disabled: true,
 });
-const SONG_DISPLAY_LIMIT = 10;
+const SONG_DISPLAY_LIMIT = 15;
 
 const colorCache = new Map();
 const DEFAULT_SWATCH_COLOR = "#555";
@@ -130,7 +130,7 @@ function applyCurrentRange() {
 // ------------ SPIRAL (Path2D + hover) ------------
 // ------------ VINYL DISPLAY ------------
 const VINYL_CANVAS_SIZE = 520;
-const VINYL_COUNT = 10;
+const VINYL_COUNT = 15;
 const VINYL_OUTER_RADIUS = 58;
 const VINYL_INNER_RADIUS = 26;
 let vinylCanvas = null;
