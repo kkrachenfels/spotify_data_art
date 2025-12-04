@@ -1,5 +1,7 @@
 // Frontend for Spotify Top Tracks (rank-based). Keeps your Path2D + isPointInStroke spiral.
 
+
+
 function el(tag, props = {}, ...children) {
   const e = document.createElement(tag);
   Object.entries(props).forEach(([k, v]) => {
@@ -59,6 +61,19 @@ const startRange = el("input", {
 });
 const SONG_DISPLAY_LIMIT = 15;
 
+// ------------ VINYL DISPLAY ------------
+const VINYL_CANVAS_WIDTH = 1200;
+const VINYL_CANVAS_HEIGHT = 760;
+const VINYL_COUNT = 15;
+const VINYL_OUTER_RADIUS = 68;
+const VINYL_INNER_RADIUS = 32;
+let vinylCanvas = null;
+let vinylCtx = null;
+let vinylAnimationId = null;
+let vinylObjects = [];
+let vinylDrawOrder = [];
+let lastVinylTimestamp = null;
+
 const colorCache = new Map();
 const DEFAULT_SWATCH_COLOR = "#555";
 const applyRangeBtn = el(
@@ -84,6 +99,23 @@ Object.entries(FRUIT_ASSETS).forEach(([name, src]) => {
   fruitImageMap[name] = img;
 });
 const FRUIT_IMAGE_VALUES = Object.values(fruitImageMap);
+
+const CATERPILLAR_MARGIN = 12;
+
+const CATERPILLAR_HEAD_SRC = "assets/caterpillar_head.png";
+const CATERPILLAR_BUTT_SRC = "assets/caterpillar_butt.png";
+const CATERPILLAR_HEAD_SIZE = {
+  width: VINYL_OUTER_RADIUS * 2.5,
+  height: VINYL_OUTER_RADIUS * 2.5,
+};
+const CATERPILLAR_BUTT_SIZE = {
+  width: VINYL_OUTER_RADIUS * 2.5,
+  height: VINYL_OUTER_RADIUS * 2.5,
+};
+const caterpillarSprites = {
+  head: createCaterpillarSprite(CATERPILLAR_HEAD_SRC, CATERPILLAR_HEAD_SIZE),
+  butt: createCaterpillarSprite(CATERPILLAR_BUTT_SRC, CATERPILLAR_BUTT_SIZE),
+};
 
 startRange.addEventListener("input", () => {
   startLabel.textContent = `From rank: ${startRange.value}`;
@@ -195,28 +227,18 @@ function applyCurrentRange() {
     });
 }
 
-// ------------ SPIRAL (Path2D + hover) ------------
-// ------------ VINYL DISPLAY ------------
-const VINYL_CANVAS_SIZE = 970;
-const VINYL_COUNT = 15;
-const VINYL_OUTER_RADIUS = 72;
-const VINYL_INNER_RADIUS = 32;
-let vinylCanvas = null;
-let vinylCtx = null;
-let vinylAnimationId = null;
-let vinylObjects = [];
-let lastVinylTimestamp = null;
 
 function renderVinylScene(tracks) {
   list.innerHTML = "";
+  clearCaterpillarSprites();
   const container = el("div", { class: "vinyl-canvas-container" });
   container.style.position = "relative";
-  container.style.width = `${VINYL_CANVAS_SIZE}px`;
-  container.style.height = `${VINYL_CANVAS_SIZE}px`;
+  container.style.width = `${VINYL_CANVAS_WIDTH}px`;
+  container.style.height = `${VINYL_CANVAS_HEIGHT}px`;
   container.style.margin = "16px 0 16px 0";
   container.style.alignSelf = "flex-start";
   container.style.paddingLeft = "16px";
-  container.style.width = `${VINYL_CANVAS_SIZE + 40}px`;
+  container.style.width = `${VINYL_CANVAS_WIDTH + 40}px`;
   container.style.border = "1px solid #eee";
   container.style.borderRadius = "12px";
   container.style.backgroundColor = "#fff";
@@ -286,8 +308,8 @@ function initializeVinylScene(container, tracks, colors) {
   vinylCanvas = null;
   vinylCtx = null;
   vinylCanvas = document.createElement("canvas");
-  vinylCanvas.width = VINYL_CANVAS_SIZE;
-  vinylCanvas.height = VINYL_CANVAS_SIZE;
+  vinylCanvas.width = VINYL_CANVAS_WIDTH;
+  vinylCanvas.height = VINYL_CANVAS_HEIGHT;
   vinylCanvas.style.display = "block";
   vinylCanvas.style.position = "absolute";
   vinylCanvas.style.top = "0";
@@ -310,10 +332,10 @@ function initializeVinylScene(container, tracks, colors) {
 
   vinylCanvas.addEventListener("mousemove", onMove);
   vinylCanvas.addEventListener("mouseleave", onLeave);
-  const center = VINYL_CANVAS_SIZE / 2;
+  const center = VINYL_CANVAS_HEIGHT / 2;
   const count = tracks.length;
   const padding = VINYL_OUTER_RADIUS + 20;
-  const availableWidth = VINYL_CANVAS_SIZE - 2 * padding;
+  const availableWidth = VINYL_CANVAS_WIDTH - 2 * padding;
   const spreading = availableWidth / Math.max(count - 1, 1);
   const targetDist = VINYL_OUTER_RADIUS * 2.4;
   const baseSpacing = Math.max(spreading, VINYL_OUTER_RADIUS * 2.4);
@@ -323,14 +345,15 @@ function initializeVinylScene(container, tracks, colors) {
   const maxVerticalDiff = Math.sqrt(
     Math.max(targetDist * targetDist - spacingX * spacingX, 0)
   );
-  const baseAmplitude = (maxVerticalDiff / (2 * sinHalf || 1)) * 1.2;
+  const baseAmplitude = (maxVerticalDiff / (2 * sinHalf || 1)) * 0.4;
   let amplitude = Math.min(
     Math.max(baseAmplitude * 1, VINYL_OUTER_RADIUS * 1),
-    VINYL_CANVAS_SIZE / 2 - VINYL_OUTER_RADIUS
+    VINYL_CANVAS_HEIGHT / 2 - VINYL_OUTER_RADIUS
   );
 
   let wavePath = buildSineArc(
-    VINYL_CANVAS_SIZE,
+    VINYL_CANVAS_WIDTH,
+    VINYL_CANVAS_HEIGHT,
     spacingX,
     amplitude,
     VINYL_OUTER_RADIUS
@@ -340,43 +363,71 @@ function initializeVinylScene(container, tracks, colors) {
     amplitude =
       (amplitude * requiredLength) / Math.max(wavePath.totalLength, 1);
     wavePath = buildSineArc(
-      VINYL_CANVAS_SIZE,
+      VINYL_CANVAS_WIDTH,
+      VINYL_CANVAS_HEIGHT,
       spacingX,
       amplitude,
       VINYL_OUTER_RADIUS
     );
   }
-  for (let i = 0; i < count; i += 1) {
-    const pathPoint = sampleSineArc(wavePath, i * targetDist);
+
+  const entitySpacing = targetDist;
+  const layoutSequence = [];
+  layoutSequence.push({ kind: "head", length: -entitySpacing });
+  tracks.forEach((track, idx) => {
+    layoutSequence.push({
+      kind: "vinyl",
+      length: idx * entitySpacing,
+      track,
+      color: colors[idx] || DEFAULT_SWATCH_COLOR,
+    });
+  });
+  layoutSequence.push({ kind: "butt", length: requiredLength + entitySpacing });
+
+  const drawEntries = [];
+  layoutSequence.forEach((entry) => {
+    const pathPoint = sampleSineArcExtended(wavePath, entry.length);
+    if (entry.kind === "head" || entry.kind === "butt") {
+      const sprite =
+        entry.kind === "head"
+          ? caterpillarSprites.head
+          : caterpillarSprites.butt;
+      if (sprite) {
+        const pos =
+          clampSpritePosition(pathPoint, sprite, padding) || pathPoint;
+        sprite.position = pos;
+        drawEntries.push({ type: "sprite", sprite });
+      }
+      return;
+    }
+
+    const track = entry.track;
     const vinyl = new Vinyl(
       pathPoint.x,
       pathPoint.y,
       VINYL_OUTER_RADIUS,
       VINYL_INNER_RADIUS,
-      colors[i] || DEFAULT_SWATCH_COLOR
+      entry.color
     );
-    const rankStr = tracks[i].rank ? `#${tracks[i].rank} ` : "";
-    const title = `${rankStr}${tracks[i].name || ""}`;
-    const artist = getArtistNamesSafe(tracks[i]);
-    const rawAlbum = tracks[i]?.album;
+    const rankStr = track?.rank ? `#${track.rank} ` : "";
+    const title = `${rankStr}${track?.name || ""}`;
+    const artist = getArtistNamesSafe(track);
+    const rawAlbum = track?.album;
     const album =
       typeof rawAlbum === "string"
         ? rawAlbum
-        : rawAlbum?.name || tracks[i]?.album_name || "";
+        : rawAlbum?.name || track?.album_name || "";
 
-    // If you don’t actually have BPM/tempo yet, keep it null
-    // (your code was using popularity for speed earlier — leave that if you want)
     const bpm =
-      (typeof tracks[i].bpm === "number" ? tracks[i].bpm : null) ??
-      (typeof tracks[i].tempo === "number" ? tracks[i].tempo : null) ??
+      (typeof track?.bpm === "number" ? track.bpm : null) ??
+      (typeof track?.tempo === "number" ? track.tempo : null) ??
       null;
 
     const derivedBpm = Math.max(
       70,
-      Math.round((tracks[i]?.popularity ?? 60) * 1.25 + 5)
+      Math.round((track?.popularity ?? 60) * 1.25 + 5)
     );
 
-    // Set meta → title/artist/BPM (BPM also drives spin inside Vinyl)
     vinyl.setTrackMeta({
       title,
       artist,
@@ -386,12 +437,14 @@ function initializeVinylScene(container, tracks, colors) {
       hoverBpm: bpm ?? derivedBpm,
     });
 
-    // Fallback angular speed if no BPM present
     if (bpm == null) {
-      vinyl.setAngularVelocity(0.6 + (i % 3) * 0.15);
+      vinyl.setAngularVelocity(0.6 + (vinylObjects.length % 3) * 0.15);
     }
     vinylObjects.push(vinyl);
-  }
+    drawEntries.push({ type: "vinyl", vinyl });
+  });
+
+  vinylDrawOrder = drawEntries;
 
   lastVinylTimestamp = null;
   vinylAnimationId = requestAnimationFrame(animateVinyls);
@@ -403,14 +456,17 @@ function animateVinyls(timestamp) {
   const delta = (timestamp - lastVinylTimestamp) / 1000;
   lastVinylTimestamp = timestamp;
 
-  vinylCtx.clearRect(0, 0, VINYL_CANVAS_SIZE, VINYL_CANVAS_SIZE);
+  vinylCtx.clearRect(0, 0, VINYL_CANVAS_WIDTH, VINYL_CANVAS_HEIGHT);
 
   let anyHover = false;
 
-  vinylObjects.forEach((vinyl) => {
-    // tell each vinyl whether we're hovering it
+  vinylDrawOrder.forEach((entry) => {
+    if (entry.type === "sprite") {
+      drawCaterpillarSprite(vinylCtx, entry.sprite);
+      return;
+    }
+    const vinyl = entry.vinyl;
     if (vinyl.updateHover(vinylMouse.x, vinylMouse.y)) anyHover = true;
-
     vinyl.update(delta);
     vinyl.draw(vinylCtx);
   });
@@ -436,12 +492,101 @@ function updateVinylColors(colors) {
   });
 }
 
-function buildSineArc(canvasSize, spacingX, amplitude, radius) {
-  const padding = radius + 20;
-  const width = canvasSize - 2 * padding;
+function clearCaterpillarSprites() {
+  Object.values(caterpillarSprites).forEach((sprite) => {
+    if (sprite) sprite.position = null;
+  });
+}
+
+function drawCaterpillarSprite(ctx, sprite) {
+  if (!sprite || !sprite.ready || !sprite.position) return;
+  const { x, y } = sprite.position;
+  ctx.drawImage(
+    sprite.image,
+    x - sprite.width / 2,
+    y - sprite.height / 2,
+    sprite.width,
+    sprite.height
+  );
+}
+
+function createCaterpillarSprite(src, { width, height }) {
+  const image = new Image();
+  image.crossOrigin = "Anonymous";
+  const sprite = {
+    image,
+    width: width || 140,
+    height: height || 110,
+    ready: false,
+    position: null,
+  };
+  image.onload = () => {
+    sprite.ready = true;
+  };
+  image.onerror = () => {
+    sprite.ready = false;
+  };
+  image.src = src;
+  return sprite;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function clampSpritePosition(point, sprite, margin = 0) {
+  if (!point || !sprite) return null;
+  const minX = -sprite.width / 2 + margin;
+  const maxX = VINYL_CANVAS_WIDTH + sprite.width / 2 - margin;
+  const minY = -sprite.height / 2 + margin;
+  const maxY = VINYL_CANVAS_HEIGHT + sprite.height / 2 - margin;
+  return {
+    x: clamp(point.x, minX, maxX),
+    y: clamp(point.y, minY, maxY),
+  };
+}
+
+function sampleSineArcExtended(path, targetLength) {
+  const { points } = path;
+  if (!points.length) return { x: 0, y: 0 };
+  const total = path.totalLength;
+  if (targetLength >= 0 && targetLength <= total) {
+    return sampleSineArc(path, targetLength);
+  }
+  if (targetLength < 0) {
+    const first = points[0];
+    const next = points[1] || first;
+    return offsetAlongPath(first, next, Math.abs(targetLength), false);
+  }
+  const last = points[points.length - 1];
+  const prev = points[points.length - 2] || last;
+  const overshoot = Math.max(targetLength - total, 0);
+  if (!overshoot) return { x: last.x, y: last.y };
+  const directionPoint = {
+    x: last.x + (last.x - prev.x),
+    y: last.y + (last.y - prev.y),
+  };
+  return offsetAlongPath(last, directionPoint, overshoot, true);
+}
+
+function offsetAlongPath(base, neighbor, distance, forward = true) {
+  const dirX = neighbor.x - base.x;
+  const dirY = neighbor.y - base.y;
+  const len = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+  const sign = forward ? 1 : -1;
+  return {
+    x: base.x + sign * (dirX / len) * distance,
+    y: base.y + sign * (dirY / len) * distance,
+  };
+}
+
+function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
+  const horizontalPadding = radius + 20;
+  const verticalPadding = radius + 20;
+  const width = canvasWidth - 2 * horizontalPadding;
   const phaseShift = -Math.PI / 2;
-  const bottomY = canvasSize - padding - radius - 4;
-  const topBound = padding + radius + 4;
+  const bottomY = canvasHeight - verticalPadding - radius - 4;
+  const topBound = verticalPadding + radius + 4;
   const verticalSpan = Math.max(bottomY - topBound, 0);
   const effectiveAmplitude = Math.min(
     Math.max(amplitude, 0),
@@ -453,7 +598,7 @@ function buildSineArc(canvasSize, spacingX, amplitude, radius) {
   let prevPoint = null;
   for (let i = 0; i <= steps; i += 1) {
     const u = i / steps;
-    const x = padding + u * width;
+    const x = horizontalPadding + u * width;
     // Start the wave at the bottom of the canvas and move upward from there.
     const y =
       bottomY -
