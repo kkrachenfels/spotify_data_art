@@ -26,7 +26,7 @@ const header = el("h2", {}, "Spotify: Your Top Tracks");
 const info = el(
   "p",
   {},
-  'Click "Login with Spotify" to connect your account, then use the rank slider and "Update filter" button to refresh the spiral.'
+  'Click "Login with Spotify" to connect your account, then pick a starting rank and click "Update filter" to refresh the vinyl display.'
 );
 const loginBtn = el(
   "button",
@@ -43,7 +43,6 @@ const list = el("div", { id: "liked-list" });
 
 // Rank-based UI (no dates)
 const startLabel = el("span", { class: "date-value" }, "From rank: —");
-const endLabel = el("span", { class: "date-value" }, "To rank: —");
 const startRange = el("input", {
   type: "range",
   id: "start-range",
@@ -52,14 +51,7 @@ const startRange = el("input", {
   value: 1,
   disabled: true,
 });
-const endRange = el("input", {
-  type: "range",
-  id: "end-range",
-  min: 1,
-  max: 1,
-  value: 1,
-  disabled: true,
-});
+const SONG_DISPLAY_LIMIT = 10;
 
 const colorCache = new Map();
 const DEFAULT_SWATCH_COLOR = "#555";
@@ -69,30 +61,10 @@ const applyRangeBtn = el(
   "Update filter"
 );
 const MAX_TOP_TRACKS = 100;
-const DEFAULT_SONG_DISPLAY_LIMIT = 10;
-let songDisplayLimit = DEFAULT_SONG_DISPLAY_LIMIT;
-const songCountInput = el("input", {
-  type: "number",
-  id: "song-count-input",
-  min: 1,
-  max: MAX_TOP_TRACKS,
-  value: DEFAULT_SONG_DISPLAY_LIMIT,
-  step: 1,
-});
-const songCountBtn = el(
-  "button",
-  { id: "set-song-count", onclick: applySongCount },
-  "Set song count"
-);
 
-startRange.addEventListener("input", () => ensureRangeOrder(true));
-endRange.addEventListener("input", () => ensureRangeOrder(false));
-function ensureRangeOrder(isStart) {
-  const s = Number(startRange.value);
-  const e = Number(endRange.value);
-  if (isStart && s > e) endRange.value = s;
-  else if (!isStart && e < s) startRange.value = e;
-}
+startRange.addEventListener("input", () => {
+  startLabel.textContent = `From rank: ${startRange.value}`;
+});
 
 const filterSection = el(
   "section",
@@ -101,7 +73,7 @@ const filterSection = el(
   el(
     "p",
     { class: "filter-hint" },
-    `Choose a rank range, then click "Update filter" to load the top ${MAX_TOP_TRACKS} tracks for that window and re-draw.`
+    `Pick the starting rank (up to ${MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1}), then press "Update filter" to fetch 10 tracks from there.`
   ),
   el(
     "div",
@@ -110,20 +82,6 @@ const filterSection = el(
     startLabel,
     startRange
   ),
-  el(
-    "div",
-    { class: "slider-control" },
-    el("label", { for: "end-range" }, "To"),
-    endLabel,
-    endRange
-  ),
-  el(
-    "div",
-    { class: "song-count-control" },
-    el("label", { for: "song-count-input" }, "Songs to show"),
-    songCountInput,
-    songCountBtn
-  ),
   applyRangeBtn
 );
 const rangeStatus = el(
@@ -131,14 +89,6 @@ const rangeStatus = el(
   { id: "range-status" },
   "Load top tracks to enable the rank filter."
 );
-
-const SPIRAL_SIZE = 420;
-let spiralInstance = null;
-let spiralSegments = [];
-let spiralTooltip = null;
-let spiralDrawingCtx = null; // used for isPointInStroke
-let hoveredIndex = -1;
-const BASE_STROKE = 36;
 
 root.appendChild(header);
 root.appendChild(info);
@@ -149,12 +99,11 @@ root.insertBefore(filterSection, list);
 root.insertBefore(rangeStatus, list);
 
 function applyCurrentRange() {
-  ensureRangeOrder(true);
-  const lo = Math.min(Number(startRange.value), Number(endRange.value));
-  const hi = Math.max(Number(startRange.value), Number(endRange.value));
+  const startRank = Number(startRange.value);
+  const offsetRank = Math.max(1, Math.min(startRank, MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1));
   list.innerHTML = "Loading top tracks...";
   rangeStatus.textContent = "Fetching top tracks from Spotify...";
-  fetch(`/top_tracks?start=${lo}&end=${hi}`, { cache: "no-store" })
+  fetch(`/top_tracks?offset=${offsetRank}`, { cache: "no-store" })
     .then(async (response) => {
       if (!response.ok) {
         const text = await response.text();
@@ -164,30 +113,18 @@ function applyCurrentRange() {
     })
     .then((data) => {
       const items = (data?.items || []);
-      const shown = Math.min(items.length, songDisplayLimit);
+      const shown = Math.min(items.length, SONG_DISPLAY_LIMIT);
       renderVinylScene(items.slice(0, shown));
       const total = items.length;
       rangeStatus.textContent = total
-        ? `Showing ${shown} of ${total} tracks between ranks ${lo} and ${hi}.`
-        : `No tracks found between ranks ${lo} and ${hi}.`;
-      startLabel.textContent = `From rank: ${lo}`;
-      endLabel.textContent = `To rank: ${hi}`;
+        ? `Showing ${shown} tracks starting from rank ${offsetRank}.`
+        : `No tracks found starting at rank ${offsetRank}.`;
+      startLabel.textContent = `From rank: ${offsetRank}`;
     })
     .catch((err) => {
       list.innerHTML = "Failed to load top tracks: " + err;
       rangeStatus.textContent = err.message || "Unable to load top tracks.";
     });
-}
-
-function applySongCount() {
-  const parsed = Number(songCountInput.value);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    rangeStatus.textContent = "Please enter a positive number of songs.";
-    return;
-  }
-  songDisplayLimit = Math.min(MAX_TOP_TRACKS, Math.round(parsed));
-  songCountInput.value = songDisplayLimit;
-  applyCurrentRange();
 }
 
 // ------------ SPIRAL (Path2D + hover) ------------
@@ -220,6 +157,12 @@ function renderVinylScene(tracks) {
   }
 
   const selected = tracks.slice(0, VINYL_COUNT);
+  initializeVinylScene(
+    container,
+    selected,
+    selected.map(() => DEFAULT_SWATCH_COLOR)
+  );
+
   const colorPromises = selected.map((item) =>
     getProminentColor(item.album_image).then(
       (color) => color || DEFAULT_SWATCH_COLOR
@@ -227,18 +170,18 @@ function renderVinylScene(tracks) {
   );
 
   Promise.all(colorPromises).then((colors) => {
-    initializeVinylScene(container, selected, colors);
+    updateVinylColors(colors);
   });
 }
 
 function initializeVinylScene(container, tracks, colors) {
   stopVinylAnimation();
   vinylObjects.length = 0;
-  if (vinylCanvas) {
+  if (vinylCanvas && vinylCanvas.parentNode === container) {
     container.removeChild(vinylCanvas);
-    vinylCanvas = null;
-    vinylCtx = null;
   }
+  vinylCanvas = null;
+  vinylCtx = null;
   vinylCanvas = document.createElement("canvas");
   vinylCanvas.width = VINYL_CANVAS_SIZE;
   vinylCanvas.height = VINYL_CANVAS_SIZE;
@@ -289,6 +232,15 @@ function stopVinylAnimation() {
     cancelAnimationFrame(vinylAnimationId);
     vinylAnimationId = null;
   }
+}
+
+function updateVinylColors(colors) {
+  if (!vinylObjects.length) return;
+  colors.forEach((color, index) => {
+    if (vinylObjects[index]) {
+      vinylObjects[index].labelColor = color;
+    }
+  });
 }
 
 // ------------ COLOR UTILS ------------
@@ -380,17 +332,12 @@ function findDominantColor(pixels, k = 3, iterations = 6) {
 
 function resetRankControls() {
   startRange.min = 1;
-  startRange.max = MAX_TOP_TRACKS;
+  const maxStart = MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1;
+  startRange.max = Math.max(maxStart, 1);
   startRange.step = 1;
-  endRange.min = 1;
-  endRange.max = MAX_TOP_TRACKS;
-  endRange.step = 1;
   startRange.value = 1;
-  endRange.value = MAX_TOP_TRACKS;
   startRange.disabled = false;
-  endRange.disabled = false;
   startLabel.textContent = "From rank: 1";
-  endLabel.textContent = `To rank: ${MAX_TOP_TRACKS}`;
 }
 
 document.addEventListener("DOMContentLoaded", () => {

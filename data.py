@@ -35,6 +35,7 @@ AUTH_URL = 'https://accounts.spotify.com/authorize'
 TOKEN_URL = 'https://accounts.spotify.com/api/token'
 API_BASE = 'https://api.spotify.com/v1'
 MAX_TOP_TRACKS = 100
+TOP_TRACKS_WINDOW = 10
 
 
 # ------------------------- helpers -------------------------
@@ -114,23 +115,6 @@ def _fetch_top_tracks_page(headers, offset, limit=50, time_range='long_term'):
     return data.get('items', []), data.get('total')
 
 
-def _fetch_top_tracks_limited(headers, time_range='long_term', limit=MAX_TOP_TRACKS):
-    rows = []
-    offset = 0
-    while len(rows) < limit:
-        page_limit = min(50, limit - len(rows))
-        items, _ = _fetch_top_tracks_page(
-            headers, offset=offset, limit=page_limit, time_range=time_range
-        )
-        if not items:
-            break
-        rows.extend(_parse_top_tracks_items(items, start_rank=offset + 1))
-        offset += len(items)
-        if len(items) < page_limit:
-            break
-    return rows[:limit]
-
-
 @app.route('/top_tracks')
 def top_tracks():
     if 'access_token' not in session:
@@ -143,27 +127,29 @@ def top_tracks():
         return jsonify({'error': 'not_authenticated'}), 401
 
     try:
-        rows = _fetch_top_tracks_limited(headers, time_range='long_term', limit=MAX_TOP_TRACKS)
+        requested_start = int(request.args.get('offset', 1))
+    except (ValueError, TypeError):
+        requested_start = 1
+    max_start = max(1, MAX_TOP_TRACKS - TOP_TRACKS_WINDOW + 1)
+    start_rank = max(1, min(requested_start, max_start))
+    spotify_offset = max(0, start_rank - 1)
+
+    try:
+        items, _ = _fetch_top_tracks_page(
+            headers,
+            offset=spotify_offset,
+            limit=TOP_TRACKS_WINDOW,
+            time_range='long_term'
+        )
     except Exception as err:
         return jsonify({'error': 'spotify_api_failed', 'details': str(err)}), 500
 
-    try:
-        start_rank = max(1, int(request.args.get('start', 1)))
-    except (ValueError, TypeError):
-        start_rank = 1
-    try:
-        end_rank = min(MAX_TOP_TRACKS, int(request.args.get('end', MAX_TOP_TRACKS)))
-    except (ValueError, TypeError):
-        end_rank = MAX_TOP_TRACKS
-    if end_rank < start_rank:
-        start_rank, end_rank = end_rank, start_rank
-
-    filtered = [row for row in rows if start_rank <= row['rank'] <= end_rank]
+    rows = _parse_top_tracks_items(items, start_rank=start_rank)
     return jsonify({
-        'items': filtered,
+        'items': rows,
         'min_rank': start_rank,
-        'max_rank': end_rank,
-        'total': len(filtered),
+        'max_rank': start_rank + len(rows) - 1,
+        'total': len(rows),
     })
 
 
