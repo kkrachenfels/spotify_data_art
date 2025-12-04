@@ -54,7 +54,3 @@ FLASK_APP=data.py flask run
 Note: This demo stores access tokens in the Flask session cookie for simplicity; do not use this approach for production apps without appropriate security review.
 
 env:
-
-```conda env create -f env.yml
-conda activate spotify-backend
-```
