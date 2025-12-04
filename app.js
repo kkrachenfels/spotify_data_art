@@ -210,7 +210,7 @@ function initializeVinylScene(container, tracks, colors) {
   );
   const baseAmplitude = (maxVerticalDiff / (2 * sinHalf || 1)) * 1.2;
   let amplitude = Math.min(
-    Math.max(baseAmplitude * 1, VINYL_OUTER_RADIUS * 1.1),
+    Math.max(baseAmplitude * 1, VINYL_OUTER_RADIUS * 1),
     VINYL_CANVAS_SIZE / 2 - VINYL_OUTER_RADIUS
   );
 
