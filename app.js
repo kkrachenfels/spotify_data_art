@@ -57,7 +57,7 @@ const startRange = el("input", {
   value: 1,
   disabled: true,
 });
-const SONG_DISPLAY_LIMIT = 15;
+const SONG_DISPLAY_LIMIT = 10;
 // ------------ VINYL DISPLAY ------------
 const VINYL_CANVAS_WIDTH = 1440;
 const VINYL_CANVAS_HEIGHT = 760;
@@ -197,56 +197,62 @@ startRange.addEventListener("input", () => {
   startLabel.textContent = `From rank: ${startRange.value}`;
 });
 
-// --- TIME RANGE STATE + BUTTONS ---
+// --- TIME RANGE STATE + RADIO CONTROL ---
 
 // pick your default: "short_term" | "medium_term" | "long_term"
 let currentTimeRange = "long_term";
+let pendingTimeRange = currentTimeRange;
+const timeRangeOptions = [
+  { label: "1 month", value: "short_term" },
+  { label: "6 months", value: "medium_term" },
+  { label: "1 year", value: "long_term" },
+];
+let timeRangeOptionLabels = [];
 
-function setTimeRange(range) {
-  currentTimeRange = range;
-
-  // Update button active state
-  document.querySelectorAll(".time-range-button").forEach((btn) => {
-    const r = btn.getAttribute("data-range");
-    btn.classList.toggle("active", r === range);
+function updatePendingTimeRange(value) {
+  pendingTimeRange = value;
+  timeRangeOptionLabels.forEach((lbl) => {
+    lbl.classList.toggle("active", lbl.dataset.range === value);
   });
-
-  // Re-fetch using current slider + new time window
-  applyCurrentRange();
 }
 
-const timeRangeControls = el(
-  "div",
-  { class: "time-range-controls" },
-  el("span", { class: "time-range-label" }, "Time window: "),
-  el(
-    "button",
-    {
-      class: "compact-button time-range-button",
-      "data-range": "short_term",
-      onclick: () => setTimeRange("short_term"),
-    },
-    "1 month"
-  ),
-  el(
-    "button",
-    {
-      class: "compact-button time-range-button",
-      "data-range": "medium_term",
-      onclick: () => setTimeRange("medium_term"),
-    },
-    "6 months"
-  ),
-  el(
-    "button",
-    {
-      class: "compact-button time-range-button active",
-      "data-range": "long_term",
-      onclick: () => setTimeRange("long_term"),
-    },
-    "1 year"
-  ),
-);
+function buildTimeRangeControls() {
+  const container = document.createElement("div");
+  container.className = "time-range-controls";
+  container.appendChild(el("span", { class: "time-range-label" }, "Time window: "));
+  container.appendChild(document.createElement("br"));
+
+  timeRangeOptions.forEach((option) => {
+    const id = `time-range-${option.value}`;
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "time-range";
+    radio.value = option.value;
+    radio.id = id;
+    radio.checked = option.value === pendingTimeRange;
+    radio.addEventListener("change", () => {
+      if (radio.checked) updatePendingTimeRange(option.value);
+    });
+
+    const label = document.createElement("label");
+    label.className =
+      "time-range-option" + (option.value === pendingTimeRange ? " active" : "");
+    label.dataset.range = option.value;
+    label.htmlFor = id;
+    label.style.display = "flex";
+    label.style.alignItems = "center";
+    label.style.margin = "4px 0";
+    label.appendChild(radio);
+    label.appendChild(document.createTextNode(option.label));
+
+    timeRangeOptionLabels.push(label);
+    container.appendChild(label);
+  });
+
+  return container;
+}
+
+const timeRangeControls = buildTimeRangeControls();
 
 // --- FILTER SECTION (now can safely use timeRangeControls) ---
 
@@ -258,9 +264,7 @@ const filterSection = el(
   el(
     "p",
     { class: "filter-hint" },
-    `Pick a time window and starting rank (up to ${
-      MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1
-    }), then press "Update filter" to fetch tracks from there.`
+    `Pick a time window and starting rank, then press "Update filter" to fetch tracks from there.`
   ),
   el(
     "div",
@@ -317,6 +321,7 @@ function applyCurrentRange() {
     1,
     Math.min(startRank, MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1)
   );
+  currentTimeRange = pendingTimeRange;
   list.innerHTML = "Loading top tracks...";
   rangeStatus.textContent = "Fetching top tracks from Spotify...";
 

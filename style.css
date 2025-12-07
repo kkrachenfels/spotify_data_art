@@ -221,6 +221,30 @@ input[type="range"]:disabled {
   color: #eee;
 }
 
+.time-range-controls {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+
+.time-range-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+}
+
+.time-range-option.active {
+  color: #1db954;
+  font-weight: 600;
+}
+
+.time-range-option input[type="radio"] {
+  accent-color: #1db954;
+}
+
 .content-layout {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
