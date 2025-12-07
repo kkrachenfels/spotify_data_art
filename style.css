@@ -257,7 +257,7 @@ input[type="range"]:disabled {
 .fruit-overlay {
   position: absolute;
   bottom: 24px;
-  left: 24px;
+  left: 12px;
   width: 280px;
   height: 360px;
   pointer-events: none;

@@ -61,7 +61,7 @@ const SONG_DISPLAY_LIMIT = 15;
 // ------------ VINYL DISPLAY ------------
 const VINYL_CANVAS_WIDTH = 1360;
 const VINYL_CANVAS_HEIGHT = 760;
-const VINYL_CANVAS_LEFT_PADDING = 120;
+const VINYL_CANVAS_LEFT_PADDING = 150;
 const VINYL_COUNT = 15;
 const VINYL_OUTER_RADIUS = 68;
 const VINYL_INNER_RADIUS = 32;
@@ -1021,8 +1021,8 @@ function spawnNextFruit() {
     image,
     120 + Math.random() * 60
   );
-  const startX = 0;
-  const endX = FRUIT_CANVAS_WIDTH;
+  const startX = - (FRUIT_MOVE_MARGIN * 3);
+  const endX = FRUIT_CANVAS_WIDTH - (FRUIT_MOVE_MARGIN * 3);
   const travelDistance = Math.max(endX - startX, 0);
   fruit.position.x = startX;
   fruit.position.y = FRUIT_CANVAS_HEIGHT / 2;
