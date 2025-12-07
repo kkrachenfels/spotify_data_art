@@ -78,11 +78,12 @@ def _refresh_token():
 
 # ---------------------- TOP TRACKS (long_term) ----------------------
 
-def _parse_top_tracks_items(items, start_rank=1):
+def _parse_top_tracks_items(items, start_rank=1, feature_map=None):
     """Convert /me/top/tracks items to our CSV rows, assigning rank starting at start_rank."""
     rows = []
     rank = start_rank
     for it in items:
+        feature = feature_map.get(it.get('id')) if feature_map else None
         artists = ', '.join(a.get('name') for a in it.get('artists', []))
         album = it.get('album', {}) or {}
         images = album.get('images', [])
@@ -93,9 +94,12 @@ def _parse_top_tracks_items(items, start_rank=1):
             'artists': artists,
             'album': album.get('name'),
             'album_image': album_image,
+            'image': album_image,
             'external_url': (it.get('external_urls') or {}).get('spotify'),
             'popularity': it.get('popularity'),
+            'energy': feature.get('energy') if feature else None,
             'album_release_date': album.get('release_date'),
+            'kind': 'track',
         })
         rank += 1
     return rows
@@ -113,6 +117,51 @@ def _fetch_top_tracks_page(headers, offset, limit=50, time_range='long_term'):
         return [], None
     data = r.json()
     return data.get('items', []), data.get('total')
+
+
+def _parse_top_artists_items(items, start_rank=1):
+    rows = []
+    rank = start_rank
+    for it in items:
+        images = it.get('images') or []
+        rows.append({
+            'rank': rank,
+            'name': it.get('name'),
+            'genres': it.get('genres') or [],
+            'image': images[0]['url'] if images else None,
+            'external_url': (it.get('external_urls') or {}).get('spotify'),
+            'popularity': it.get('popularity'),
+            'kind': 'artist',
+        })
+        rank += 1
+    return rows
+
+
+def _fetch_top_artists_page(headers, offset, limit=50, time_range='long_term'):
+    params = {
+        'limit': limit,
+        'offset': offset,
+        'time_range': time_range,
+    }
+    r = requests.get(f"{API_BASE}/me/top/artists", headers=headers, params=params)
+    if r.status_code != 200:
+        print(f"Failed to fetch top artists page offset={offset}: {r.status_code} {r.text}")
+        return [], None
+    data = r.json()
+    return data.get('items', []), data.get('total')
+
+
+def _fetch_audio_features(headers, track_ids):
+    if not track_ids:
+        return {}
+    params = {'ids': ','.join(track_ids[:100])}
+    r = requests.get(f"{API_BASE}/audio-features", headers=headers, params=params)
+    if r.status_code != 200:
+        print(f"Failed to fetch audio features: {r.status_code} {r.text}")
+        return {}
+    data = r.json()
+    features = data.get('audio_features', []) or []
+    return {feat.get('id'): feat for feat in features if feat and feat.get('id')}
 
 
 @app.route('/top_tracks')
@@ -139,8 +188,55 @@ def top_tracks():
     if requested_time_range not in ('short_term', 'medium_term', 'long_term'):
         requested_time_range = 'long_term'
 
+    feature_map = {}
     try:
         items, _ = _fetch_top_tracks_page(
+            headers,
+            offset=spotify_offset,
+            limit=TOP_TRACKS_WINDOW,
+            time_range=requested_time_range,
+        )
+        track_ids = [it.get('id') for it in items if it.get('id')]
+        feature_map = _fetch_audio_features(headers, track_ids)
+
+    except Exception as err:
+        return jsonify({'error': 'spotify_api_failed', 'details': str(err)}), 500
+
+    rows = _parse_top_tracks_items(items, start_rank=start_rank, feature_map=feature_map)
+    return jsonify({
+        'items': rows,
+        'min_rank': start_rank,
+        'max_rank': start_rank + len(rows) - 1,
+        'total': len(rows),
+    })
+
+
+@app.route('/top_artists')
+def top_artists():
+    if 'access_token' not in session:
+        return jsonify({'error': 'not_authenticated'}), 401
+    if _is_token_expired():
+        if not _refresh_token():
+            return jsonify({'error': 'token_refresh_failed'}), 401
+    headers = _auth_header()
+    if not headers:
+        return jsonify({'error': 'not_authenticated'}), 401
+
+    try:
+        requested_start = int(request.args.get('offset', 1))
+    except (ValueError, TypeError):
+        requested_start = 1
+    max_start = max(1, MAX_TOP_TRACKS - TOP_TRACKS_WINDOW + 1)
+    start_rank = max(1, min(requested_start, max_start))
+    spotify_offset = max(0, start_rank - 1)
+
+        # read time_range from query (?time_range=short_term|medium_term|long_term)
+    requested_time_range = request.args.get('time_range', 'long_term')
+    if requested_time_range not in ('short_term', 'medium_term', 'long_term'):
+        requested_time_range = 'long_term'
+
+    try:
+        items, _ = _fetch_top_artists_page(
             headers,
             offset=spotify_offset,
             limit=TOP_TRACKS_WINDOW,
@@ -150,7 +246,7 @@ def top_tracks():
     except Exception as err:
         return jsonify({'error': 'spotify_api_failed', 'details': str(err)}), 500
 
-    rows = _parse_top_tracks_items(items, start_rank=start_rank)
+    rows = _parse_top_artists_items(items, start_rank=start_rank)
     return jsonify({
         'items': rows,
         'min_rank': start_rank,
@@ -188,19 +284,6 @@ def _fetch_liked_page(headers, offset, limit=50):
     data = r.json()
     return _parse_liked_page(data), data.get('total')
 
-
-
-def _save_range_metadata(items, filename="liked_tracks_range.json"):
-    dates = [item.get('added_at') for item in items if item.get('added_at')]
-    if dates:
-        earliest = min(dates)
-        latest = max(dates)
-    else:
-        earliest = None
-        latest = None
-    meta = {'earliest': earliest, 'latest': latest}
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(meta, f)
 
 
 # --------------------------- routes ---------------------------
@@ -290,7 +373,6 @@ def liked():
 @app.route('/logout')
 def logout():
     session.clear()
-    # best-effort cleanup (you *don't* need this for overwriting – it's just tidy)
     for f in ("liked_tracks.csv", "liked_tracks_range.json", "top_tracks.csv", "top_tracks_range.json"):
         try:
             os.remove(f)
