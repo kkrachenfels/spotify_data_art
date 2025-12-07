@@ -70,6 +70,7 @@ let vinylCtx = null;
 let vinylAnimationId = null;
 let vinylObjects = [];
 let vinylDrawOrder = [];
+let pendingVinylEntries = [];
 let lastVinylTimestamp = null;
 
 const colorCache = new Map();
@@ -367,14 +368,14 @@ function renderVinylScene(tracks) {
   setupWaveBackground(container);
   updateWavePalette([]);
 
+  const initialColorSets = selected.map(() => [
+    DEFAULT_SWATCH_COLOR,
+    DEFAULT_SWATCH_COLOR,
+  ]);
+  const layout = buildVinylLayout(selected, initialColorSets);
+  initializeVinylScene(container, layout);
+
   resetFruitSequence(selected);
-  initializeVinylScene(
-    container,
-    selected,
-  selected.map(
-    () => [DEFAULT_SWATCH_COLOR, DEFAULT_SWATCH_COLOR]
-  )
-  );
 
   const colorPromises = selected.map((item) =>
     getProminentColor(item.album_image).then(
@@ -521,72 +522,20 @@ function stopWaveBackgroundAnimation() {
     waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
   }
 }
-function getArtistNamesSafe(t) {
-  const a = t?.artists;
 
-  // Array of objects or strings
-  if (Array.isArray(a)) {
-    return a
-      .map((x) => (x && typeof x === "object" ? x.name ?? "" : x ?? ""))
-      .filter(Boolean)
-      .join(", ");
+function normalizeColorSet(set) {
+  if (Array.isArray(set) && set.length) {
+    const first = set[0] || DEFAULT_SWATCH_COLOR;
+    const second = set[1] || first;
+    return [first, second];
   }
-
-  if (a && typeof a === "string") {
-    return a;
+  if (typeof set === "string" && set) {
+    return [set, set];
   }
-
-  // Single object with name
-  if (a && typeof a === "object" && typeof a.name === "string") {
-    return a.name;
-  }
-
-  // Common alternate fields some APIs use
-  return (
-    t?.artist ||
-    t?.artists ||
-    t?.primary_artist ||
-    t?.artists_name ||
-    t?.owner ||
-    ""
-  );
+  return [DEFAULT_SWATCH_COLOR, DEFAULT_SWATCH_COLOR];
 }
 
-function initializeVinylScene(container, tracks, colors) {
-  stopVinylAnimation();
-  vinylObjects.length = 0;
-  if (vinylCanvas && vinylCanvas.parentNode === container) {
-    container.removeChild(vinylCanvas);
-  }
-  vinylCanvas = null;
-  vinylCtx = null;
-  vinylCanvas = document.createElement("canvas");
-  vinylCanvas.width = VINYL_CANVAS_WIDTH;
-  vinylCanvas.height = VINYL_CANVAS_HEIGHT;
-  vinylCanvas.style.display = "block";
-  vinylCanvas.style.position = "absolute";
-  vinylCanvas.style.top = "0";
-  vinylCanvas.style.left = "0";
-  vinylCanvas.style.zIndex = "1";
-  container.appendChild(vinylCanvas);
-  vinylCtx = vinylCanvas.getContext("2d");
-  // map DOM mouse coords → canvas pixel coords (handles CSS scaling)
-  function onMove(e) {
-    const rect = vinylCanvas.getBoundingClientRect();
-    const scaleX = vinylCanvas.width / rect.width;
-    const scaleY = vinylCanvas.height / rect.height;
-    vinylMouse.x = (e.clientX - rect.left) * scaleX;
-    vinylMouse.y = (e.clientY - rect.top) * scaleY;
-  }
-  function onLeave() {
-    vinylMouse.x = -9999;
-    vinylMouse.y = -9999;
-    vinylCanvas.style.cursor = "default";
-  }
-
-  vinylCanvas.addEventListener("mousemove", onMove);
-  vinylCanvas.addEventListener("mouseleave", onLeave);
-  const center = VINYL_CANVAS_HEIGHT / 2;
+function buildVinylLayout(tracks, colorSets = []) {
   const count = tracks.length;
   const padding = VINYL_OUTER_RADIUS + 20;
   const availableWidth = VINYL_CANVAS_WIDTH - 2 * padding;
@@ -625,94 +574,214 @@ function initializeVinylScene(container, tracks, colors) {
     );
   }
 
-  const entitySpacing = targetDist;
-  const headExtraGap = 50;
+  const normalizedColorSets = tracks.map((_, idx) =>
+    normalizeColorSet(colorSets[idx])
+  );
+
   const layoutSequence = [];
   layoutSequence.push({
     kind: "head",
-    length: -(entitySpacing * 0.8), // + headExtraGap),
+    length: -(targetDist * 0.8),
     clampMargin:
       CATERPILLAR_CANVAS_MARGIN + CATERPILLAR_HEAD_SIZE.width / 2 + 8,
   });
+
   tracks.forEach((track, idx) => {
+    const colors = normalizedColorSets[idx];
     layoutSequence.push({
       kind: "vinyl",
-      length: idx * entitySpacing,
+      length: idx * targetDist,
       track,
-      color: colors[idx] || DEFAULT_SWATCH_COLOR,
+      colorSet: colors,
+      labelColor: colors[0] || DEFAULT_SWATCH_COLOR,
+      index: idx,
     });
   });
+
   layoutSequence.push({
     kind: "butt",
-    length: requiredLength + entitySpacing,
+    length: requiredLength + targetDist,
     clampMargin:
       CATERPILLAR_CANVAS_MARGIN + CATERPILLAR_BUTT_SIZE.width / 2 + 8,
   });
 
-  const drawEntries = [];
-  layoutSequence.forEach((entry) => {
-    const pathPoint = sampleSineArcExtended(wavePath, entry.length);
-    if (entry.kind === "head" || entry.kind === "butt") {
-      const sprite =
-        entry.kind === "head"
-          ? caterpillarSprites.head
-          : caterpillarSprites.butt;
-      if (sprite) {
-        const margin = entry.clampMargin ?? padding;
-        const pos = clampSpritePosition(pathPoint, sprite, margin) || pathPoint;
-        sprite.position = pos;
-        drawEntries.push({ type: "sprite", sprite });
-      }
-      return;
-    }
+  const entries = layoutSequence.map((entry) => ({
+    ...entry,
+    pathPoint: sampleSineArcExtended(wavePath, entry.length),
+  }));
 
-    const track = entry.track;
-    const vinyl = new Vinyl(
-      pathPoint.x,
-      pathPoint.y,
-      VINYL_OUTER_RADIUS,
-      VINYL_INNER_RADIUS,
-      entry.color
+  const headEntry = entries.find((entry) => entry.kind === "head") || null;
+  const buttEntry = entries.find((entry) => entry.kind === "butt") || null;
+  const vinylEntries = entries.filter((entry) => entry.kind === "vinyl");
+  return { headEntry, buttEntry, vinylEntries };
+}
+function getArtistNamesSafe(t) {
+  const a = t?.artists;
+
+  // Array of objects or strings
+  if (Array.isArray(a)) {
+    return a
+      .map((x) => (x && typeof x === "object" ? x.name ?? "" : x ?? ""))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (a && typeof a === "string") {
+    return a;
+  }
+
+  // Single object with name
+  if (a && typeof a === "object" && typeof a.name === "string") {
+    return a.name;
+  }
+
+  // Common alternate fields some APIs use
+  return (
+    t?.artist ||
+    t?.artists ||
+    t?.primary_artist ||
+    t?.artists_name ||
+    t?.owner ||
+    ""
+  );
+}
+
+function initializeVinylScene(container, layout) {
+  stopVinylAnimation();
+  vinylObjects.length = 0;
+  pendingVinylEntries.length = 0;
+  if (vinylCanvas && vinylCanvas.parentNode === container) {
+    container.removeChild(vinylCanvas);
+  }
+  vinylCanvas = document.createElement("canvas");
+  vinylCanvas.width = VINYL_CANVAS_WIDTH;
+  vinylCanvas.height = VINYL_CANVAS_HEIGHT;
+  vinylCanvas.style.display = "block";
+  vinylCanvas.style.position = "absolute";
+  vinylCanvas.style.top = "0";
+  vinylCanvas.style.left = "0";
+  vinylCanvas.style.zIndex = "1";
+  container.appendChild(vinylCanvas);
+  vinylCtx = vinylCanvas.getContext("2d");
+
+  function onMove(e) {
+    const rect = vinylCanvas.getBoundingClientRect();
+    const scaleX = vinylCanvas.width / rect.width;
+    const scaleY = vinylCanvas.height / rect.height;
+    vinylMouse.x = (e.clientX - rect.left) * scaleX;
+    vinylMouse.y = (e.clientY - rect.top) * scaleY;
+  }
+
+  function onLeave() {
+    vinylMouse.x = -9999;
+    vinylMouse.y = -9999;
+    vinylCanvas.style.cursor = "default";
+  }
+
+  vinylCanvas.addEventListener("mousemove", onMove);
+  vinylCanvas.addEventListener("mouseleave", onLeave);
+
+  const headEntry = layout?.headEntry;
+  const buttEntry = layout?.buttEntry;
+  pendingVinylEntries = (layout?.vinylEntries || []).map((entry) => ({
+    ...entry,
+    added: false,
+    vinyl: null,
+  }));
+
+  const headSprite = caterpillarSprites.head;
+  const buttSprite = caterpillarSprites.butt;
+  if (headSprite && headEntry?.pathPoint) {
+    const pos = clampSpritePosition(
+      headEntry.pathPoint,
+      headSprite,
+      headEntry.clampMargin
     );
-    const rankStr = track?.rank ? `#${track.rank} ` : "";
-    const title = `${rankStr}${track?.name || ""}`;
-    const artist = getArtistNamesSafe(track);
-    const rawAlbum = track?.album;
-    const album =
-      typeof rawAlbum === "string"
-        ? rawAlbum
-        : rawAlbum?.name || track?.album_name || "";
-
-    const bpm =
-      (typeof track?.bpm === "number" ? track.bpm : null) ??
-      (typeof track?.tempo === "number" ? track.tempo : null) ??
-      null;
-
-    const derivedBpm = Math.max(
-      70,
-      Math.round((track?.popularity ?? 60) * 1.25 + 5)
+    headSprite.position = pos || headEntry.pathPoint;
+  }
+  if (buttSprite && buttEntry?.pathPoint) {
+    const pos = clampSpritePosition(
+      buttEntry.pathPoint,
+      buttSprite,
+      buttEntry.clampMargin
     );
+    buttSprite.position = pos || buttEntry.pathPoint;
+  }
 
-    vinyl.setTrackMeta({
-      title,
-      artist,
-      album,
-      bpm,
-      spinsPerBeat: 0.05,
-      hoverBpm: bpm ?? derivedBpm,
-    });
-
-    if (bpm == null) {
-      vinyl.setAngularVelocity(0.6 + (vinylObjects.length % 3) * 0.15);
-    }
-    vinylObjects.push(vinyl);
-    drawEntries.push({ type: "vinyl", vinyl });
-  });
-
-  vinylDrawOrder = drawEntries;
+  vinylDrawOrder = [];
+  if (headSprite) {
+    vinylDrawOrder.push({ type: "sprite", sprite: headSprite });
+  }
+  if (buttSprite) {
+    vinylDrawOrder.push({ type: "sprite", sprite: buttSprite });
+  }
 
   lastVinylTimestamp = null;
   vinylAnimationId = requestAnimationFrame(animateVinyls);
+}
+
+function addVinylFromEntry(entry) {
+  if (!entry || entry.added) return;
+  const point = entry.pathPoint || {
+    x: VINYL_CANVAS_WIDTH / 2,
+    y: VINYL_CANVAS_HEIGHT / 2,
+  };
+  const vinyl = new Vinyl(
+    point.x,
+    point.y,
+    VINYL_OUTER_RADIUS,
+    VINYL_INNER_RADIUS,
+    entry.labelColor || DEFAULT_SWATCH_COLOR
+  );
+  const track = entry.track;
+  const rankStr = track?.rank ? `#${track.rank} ` : "";
+  const title = `${rankStr}${track?.name || ""}`;
+  const artist = getArtistNamesSafe(track);
+  const rawAlbum = track?.album;
+  const album =
+    typeof rawAlbum === "string"
+      ? rawAlbum
+      : rawAlbum?.name || track?.album_name || "";
+
+  const bpm =
+    (typeof track?.bpm === "number" ? track.bpm : null) ??
+    (typeof track?.tempo === "number" ? track.tempo : null) ??
+    null;
+
+  const derivedBpm = Math.max(
+    70,
+    Math.round((track?.popularity ?? 60) * 1.25 + 5)
+  );
+
+  vinyl.setTrackMeta({
+    title,
+    artist,
+    album,
+    bpm,
+    spinsPerBeat: 0.05,
+    hoverBpm: bpm ?? derivedBpm,
+  });
+
+  if (bpm == null) {
+    vinyl.setAngularVelocity(0.6 + (vinylObjects.length % 3) * 0.15);
+  }
+
+  vinyl.setSwirlColors(entry.colorSet);
+  vinylObjects.push(vinyl);
+
+  const insertIndex = Math.max(vinylDrawOrder.length - 1, 0);
+  vinylDrawOrder.splice(insertIndex, 0, { type: "vinyl", vinyl });
+
+  entry.vinyl = vinyl;
+  entry.added = true;
+}
+
+function addVinylForTrackIndex(index) {
+  addVinylFromEntry(pendingVinylEntries[index]);
+}
+
+function onFruitAnimationComplete(trackIndex) {
+  addVinylForTrackIndex(trackIndex);
 }
 
 function animateVinyls(timestamp) {
@@ -749,16 +818,15 @@ function stopVinylAnimation() {
 }
 
 function updateVinylColors(colorSets) {
-  if (!vinylObjects.length) return;
-  colorSets.forEach((set, index) => {
-    const colors =
-      Array.isArray(set) && set.length
-        ? set
-        : [DEFAULT_SWATCH_COLOR, DEFAULT_SWATCH_COLOR];
-    const label = colors[0] || DEFAULT_SWATCH_COLOR;
-    if (vinylObjects[index]) {
-      vinylObjects[index].labelColor = label;
-      vinylObjects[index].setSwirlColors(colors);
+  if (!pendingVinylEntries.length) return;
+  const normalized = (colorSets || []).map((set) => normalizeColorSet(set));
+  pendingVinylEntries.forEach((entry, index) => {
+    const colors = normalized[index] || entry.colorSet;
+    entry.colorSet = colors;
+    entry.labelColor = colors[0] || DEFAULT_SWATCH_COLOR;
+    if (entry.vinyl) {
+      entry.vinyl.labelColor = entry.labelColor;
+      entry.vinyl.setSwirlColors(colors);
     }
   });
 }
@@ -1013,7 +1081,8 @@ function spawnNextFruit() {
     stopFruitInterval();
     return;
   }
-  const track = fruitQueue[fruitSpawnIndex];
+  const trackIndex = fruitSpawnIndex;
+  const track = fruitQueue[trackIndex];
   const image = pickRandomFruitImage();
   const fruit = new Fruit(
     FRUIT_CANVAS_WIDTH / 2,
@@ -1038,7 +1107,12 @@ function spawnNextFruit() {
     1.08,
     (fruitSpawnIndex / Math.max(fruitQueue.length, 1)) * Math.PI
   );
-  fruitObjects.splice(0, fruitObjects.length, fruit);
+  fruitObjects.push(fruit);
+  fruit.__trackIndex = trackIndex;
+  fruit.__completionX = endX;
+  fruit.__completionCallback = onFruitAnimationComplete;
+  fruit.__completionTriggered = false;
+  fruit.__shouldRemove = false;
   // optional: no caption text
   fruitSpawnIndex += 1;
   if (fruitSpawnIndex >= fruitQueue.length) {
@@ -1059,10 +1133,28 @@ function animateFruits(timestamp) {
   const delta = (timestamp - lastFruitTimestamp) / 1000;
   lastFruitTimestamp = timestamp;
   fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
+  const remaining = [];
   fruitObjects.forEach((fruit) => {
     fruit.update(delta);
+    if (
+      fruit.__completionCallback &&
+      !fruit.__completionTriggered &&
+      typeof fruit.__completionX === "number"
+    ) {
+      const reached =
+        fruit.velocity.x >= 0
+          ? fruit.position.x >= fruit.__completionX
+          : fruit.position.x <= fruit.__completionX;
+      if (reached) {
+        fruit.__completionTriggered = true;
+        fruit.__completionCallback(fruit.__trackIndex);
+        fruit.__shouldRemove = true;
+      }
+    }
     fruit.draw(fruitCtx);
+    if (!fruit.__shouldRemove) remaining.push(fruit);
   });
+  fruitObjects = remaining;
   fruitAnimationId = requestAnimationFrame(animateFruits);
 }
 
