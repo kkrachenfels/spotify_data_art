@@ -9,6 +9,7 @@ let waveAnimationId = null;
 let wavePhase = 0;
 let waveLastWaveTimestamp = null;
 let waveSpeed = WAVE_SPEED_DEFAULT;
+let waveLabels = [];
 
 function setupWaveBackground(container) {
   stopWaveBackgroundAnimation();
@@ -46,7 +47,7 @@ function setupWaveBackground(container) {
   waveLastWaveTimestamp = null;
 }
 
-function updateWavePalette(colorSets) {
+function updateWavePalette(colorSets, labelSets) {
   if (!waveCtx) return;
   const palette = (colorSets || [])
     .map((set) => {
@@ -58,6 +59,16 @@ function updateWavePalette(colorSets) {
   waveBackgroundColors = palette.length
     ? palette
     : [DEFAULT_SWATCH_COLOR];
+  const labelEntries = labelSets
+    ? labelSets
+        .map((lbl) => (typeof lbl === "string" ? lbl : ""))
+        .slice(0, WAVE_COLOR_LIMIT)
+    : [];
+  while (labelEntries.length < waveBackgroundColors.length) {
+    const idx = labelEntries.length;
+    labelEntries.push(`Item ${idx + 1}`);
+  }
+  waveLabels = labelEntries.slice(0, waveBackgroundColors.length);
   startWaveBackgroundAnimation();
 }
 
@@ -113,6 +124,22 @@ function animateWaveBackground(timestamp) {
     waveCtx.lineTo(width, 0);
     waveCtx.closePath();
     waveCtx.fill();
+    const label = waveLabels[idx];
+    if (label) {
+      const savedComposite = waveCtx.globalCompositeOperation;
+      waveCtx.globalCompositeOperation = "source-over";
+      const textColor = getContrastingTextColor(color);
+      waveCtx.fillStyle = textColor;
+      const prevAlpha = waveCtx.globalAlpha;
+      waveCtx.globalAlpha = 0.5;
+      waveCtx.font = `bold 18px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+      waveCtx.textAlign = "center";
+      waveCtx.textBaseline = "bottom";
+      const textY = Math.max(centerOffset - amplitude - 12, 20);
+      waveCtx.fillText(label, width / 2, textY);
+      waveCtx.globalAlpha = prevAlpha;
+      waveCtx.globalCompositeOperation = savedComposite;
+    }
   });
   waveCtx.globalCompositeOperation = prevComposite;
   waveCtx.globalAlpha = 1;
@@ -131,5 +158,42 @@ function stopWaveBackgroundAnimation() {
   if (waveCtx && waveCanvas) {
     waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
   }
+}
+
+function getContrastingTextColor(color) {
+  const rgb = parseColorToRgb(color);
+  if (!rgb) return "#000";
+  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+  return luminance < 0.7 ? "#fff" : "#000";
+}
+
+function parseColorToRgb(color) {
+  if (!color || typeof color !== "string") return null;
+  if (color.startsWith("rgb")) {
+    const nums = color
+      .replace(/[^\d,]/g, "")
+      .split(",")
+      .map((v) => Number(v.trim()));
+    if (nums.length >= 3) return { r: nums[0], g: nums[1], b: nums[2] };
+    return null;
+  }
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    if (hex.length === 3) {
+      return {
+        r: parseInt(hex[0] + hex[0], 16),
+        g: parseInt(hex[1] + hex[1], 16),
+        b: parseInt(hex[2] + hex[2], 16),
+      };
+    }
+    if (hex.length === 6) {
+      return {
+        r: parseInt(hex.slice(0, 2), 16),
+        g: parseInt(hex.slice(2, 4), 16),
+        b: parseInt(hex.slice(4, 6), 16),
+      };
+    }
+  }
+  return null;
 }
 

@@ -465,9 +465,17 @@ function renderVinylScene(items) {
   }
 
   const selected = items.slice(0, VINYL_COUNT);
+  console.debug(
+    "[renderVinylScene]",
+    currentDataType,
+    "items",
+    items.length,
+    "selected",
+    selected.length
+  );
   updateWaveSpeedFromTracks(selected);
   setupWaveBackground(container);
-  updateWavePalette([]);
+  updateWavePalette([], []);
 
   const initialColorSets = selected.map(() => [
     DEFAULT_SWATCH_COLOR,
@@ -487,9 +495,19 @@ function renderVinylScene(items) {
     )
   );
 
+  const labelList = selected.map((item) => {
+    if (item?.kind === "artist") return item?.name || "Unknown Artist";
+    const rankStr = item?.rank ? `#${item.rank} ` : "";
+    return `${rankStr}${item?.name || "Unknown Track"}`;
+  });
+  console.debug(
+    "[wave labels]",
+    labelList.length,
+    labelList.slice(0, 10)
+  );
   Promise.all(colorPromises).then((colors) => {
     updateVinylColors(colors);
-    updateWavePalette(colors);
+    updateWavePalette(colors, labelList);
   });
 }
 
