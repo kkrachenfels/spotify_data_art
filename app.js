@@ -48,7 +48,7 @@ const logoutBtn = el(
 const list = el("div", { id: "liked-list" });
 
 // Rank-based UI (no dates)
-const startLabel = el("span", { class: "date-value" }, "From rank: —");
+const startLabel = el("span", { class: "date-value" }, "Ranks 1 - 10");
 const startRange = el("input", {
   type: "range",
   id: "start-range",
@@ -200,7 +200,7 @@ const caterpillarSprites = {
 };
 
 startRange.addEventListener("input", () => {
-  startLabel.textContent = `From rank: ${startRange.value}`;
+  updateRankRangeLabel(Number(startRange.value));
 });
 
 // --- TIME RANGE STATE + RADIO CONTROL ---
@@ -275,7 +275,7 @@ const filterSection = el(
   el(
     "div",
     { class: "slider-control" },
-    el("label", { for: "start-range" }, "From rank"),
+    el("label", { for: "start-range" }, "Top Tracks Range:"),
     startLabel,
     startRange
   ),
@@ -321,6 +321,11 @@ root.appendChild(loginBtn);
 root.appendChild(logoutBtn);
 root.appendChild(contentLayout);
 
+function updateRankRangeLabel(startRank) {
+  const endRank = Math.min(startRank + SONG_DISPLAY_LIMIT - 1, MAX_TOP_TRACKS);
+  startLabel.textContent = `Ranks ${startRank} - ${endRank}`;
+}
+
 function applyCurrentRange() {
   const startRank = Number(startRange.value);
   const offsetRank = Math.max(
@@ -358,7 +363,7 @@ function applyCurrentRange() {
       rangeStatus.textContent = total
         ? `Showing ${shown} tracks starting from rank ${offsetRank}. Press "Eat!" to animate.`
         : `No tracks found starting at rank ${offsetRank}.`;
-      startLabel.textContent = `From rank: ${offsetRank}`;
+      updateRankRangeLabel(offsetRank);
     })
     .catch((err) => {
       list.innerHTML = "Failed to load top tracks: " + err;
@@ -1064,7 +1069,7 @@ function resetRankControls() {
   startRange.step = 1;
   startRange.value = 1;
   startRange.disabled = false;
-  startLabel.textContent = "From rank: 1";
+  updateRankRangeLabel(1);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
