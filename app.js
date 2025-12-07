@@ -100,6 +100,19 @@ Object.entries(FRUIT_ASSETS).forEach(([name, src]) => {
 });
 const FRUIT_IMAGE_VALUES = Object.values(fruitImageMap);
 
+const WAVE_COLOR_LIMIT = 10;
+const WAVE_OPACITY = 0.5;
+const WAVE_SPEED = 0.2;
+const WAVE_PHASE_LIMIT = Math.PI * 2;
+
+let waveCanvas = null;
+let waveCtx = null;
+let waveBackgroundColors = [];
+let waveAnimationId = null;
+let wavePhase = 0;
+let wavePhaseDirection = 1;
+let waveLastWaveTimestamp = null;
+
 const CATERPILLAR_MARGIN = 12;
 
 const CATERPILLAR_HEAD_SRC = "assets/caterpillar_head.png";
@@ -346,8 +359,12 @@ function renderVinylScene(tracks) {
   if (!tracks.length) {
     list.innerHTML = "No tracks in that rank range.";
     stopFruitSequence();
+    stopWaveBackgroundAnimation();
     return;
   }
+
+  setupWaveBackground(container);
+  updateWavePalette([]);
 
   const selected = tracks.slice(0, VINYL_COUNT);
   resetFruitSequence(selected);
@@ -367,7 +384,107 @@ function renderVinylScene(tracks) {
 
   Promise.all(colorPromises).then((colors) => {
     updateVinylColors(colors);
+    updateWavePalette(colors);
   });
+}
+function setupWaveBackground(container) {
+  stopWaveBackgroundAnimation();
+  if (waveCanvas && waveCanvas.parentNode) {
+    waveCanvas.parentNode.removeChild(waveCanvas);
+  }
+  waveCanvas = document.createElement("canvas");
+  waveCanvas.width = VINYL_CANVAS_WIDTH;
+  waveCanvas.height = VINYL_CANVAS_HEIGHT;
+  waveCanvas.style.display = "block";
+  waveCanvas.style.position = "absolute";
+  waveCanvas.style.top = "0";
+  waveCanvas.style.left = "0";
+  waveCanvas.style.zIndex = "0";
+  waveCanvas.style.pointerEvents = "none";
+  waveCanvas.style.width = `${VINYL_CANVAS_WIDTH}px`;
+  waveCanvas.style.height = `${VINYL_CANVAS_HEIGHT}px`;
+  container.appendChild(waveCanvas);
+  waveCtx = waveCanvas.getContext("2d");
+  waveBackgroundColors = [];
+  wavePhase = 0;
+  wavePhaseDirection = 1;
+  waveLastWaveTimestamp = null;
+}
+
+function updateWavePalette(colorSets) {
+  if (!waveCtx) return;
+  const palette = (colorSets || [])
+    .map((set) => {
+      if (typeof set === "string") return set;
+      if (Array.isArray(set) && set.length) return set[0];
+      return DEFAULT_SWATCH_COLOR;
+    })
+    .slice(0, WAVE_COLOR_LIMIT);
+  waveBackgroundColors = palette.length
+    ? palette
+    : [DEFAULT_SWATCH_COLOR];
+  startWaveBackgroundAnimation();
+}
+
+function startWaveBackgroundAnimation() {
+  if (!waveCtx || !waveBackgroundColors.length || waveAnimationId) return;
+  waveAnimationId = requestAnimationFrame(animateWaveBackground);
+}
+
+function animateWaveBackground(timestamp) {
+  if (!waveCtx || !waveCanvas) return;
+  if (!waveBackgroundColors.length) {
+    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    waveAnimationId = requestAnimationFrame(animateWaveBackground);
+    return;
+  }
+  if (!waveLastWaveTimestamp) waveLastWaveTimestamp = timestamp;
+  const delta = (timestamp - waveLastWaveTimestamp) / 1000;
+  waveLastWaveTimestamp = timestamp;
+  wavePhase = (wavePhase + WAVE_SPEED * delta) % (Math.PI * 4);
+  const { width, height } = waveCanvas;
+  waveCtx.clearRect(0, 0, width, height);
+  waveCtx.globalAlpha = WAVE_OPACITY;
+  const prevComposite = waveCtx.globalCompositeOperation;
+  waveCtx.globalCompositeOperation = "destination-over";
+  const spacing = height / (waveBackgroundColors.length + 1);
+  waveBackgroundColors.forEach((color, idx) => {
+    const amplitude = 24 + idx * 4;
+    const centerOffset =
+      spacing * (idx + 1) + Math.sin(wavePhase * 0.8 + idx) * 12;
+    const freqFactor = 1 + idx * 0.15;
+    const phaseShift = wavePhase * (0.4 + idx * 0.2);
+    waveCtx.fillStyle = color;
+    waveCtx.beginPath();
+    waveCtx.moveTo(0, 0);
+    for (let x = 0; x <= width; x += 16) {
+      const normalized = (x / width) * Math.PI * 2 * freqFactor;
+      const y =
+        centerOffset +
+        Math.sin(normalized + phaseShift) * amplitude * (1 + idx * 0.05);
+      waveCtx.lineTo(x, y);
+    }
+    waveCtx.lineTo(width, 0);
+    waveCtx.closePath();
+    waveCtx.fill();
+  });
+  waveCtx.globalCompositeOperation = prevComposite;
+  waveCtx.globalAlpha = 1;
+  waveAnimationId = requestAnimationFrame(animateWaveBackground);
+}
+
+function stopWaveBackgroundAnimation() {
+  if (waveAnimationId) {
+    cancelAnimationFrame(waveAnimationId);
+    waveAnimationId = null;
+  }
+  waveLastWaveTimestamp = null;
+  waveBackgroundColors = [];
+  wavePhase = 0;
+  wavePhaseDirection = 1;
+  if (waveCtx && waveCanvas) {
+    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+  }
 }
 function getArtistNamesSafe(t) {
   const a = t?.artists;
@@ -415,6 +532,7 @@ function initializeVinylScene(container, tracks, colors) {
   vinylCanvas.style.position = "absolute";
   vinylCanvas.style.top = "0";
   vinylCanvas.style.left = "0";
+  vinylCanvas.style.zIndex = "1";
   container.appendChild(vinylCanvas);
   vinylCtx = vinylCanvas.getContext("2d");
   // map DOM mouse coords → canvas pixel coords (handles CSS scaling)
