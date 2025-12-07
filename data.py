@@ -208,19 +208,6 @@ def _fetch_liked_page(headers, offset, limit=50):
 
 
 
-def _save_range_metadata(items, filename="liked_tracks_range.json"):
-    dates = [item.get('added_at') for item in items if item.get('added_at')]
-    if dates:
-        earliest = min(dates)
-        latest = max(dates)
-    else:
-        earliest = None
-        latest = None
-    meta = {'earliest': earliest, 'latest': latest}
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(meta, f)
-
-
 # --------------------------- routes ---------------------------
 
 @app.route('/')
@@ -308,7 +295,6 @@ def liked():
 @app.route('/logout')
 def logout():
     session.clear()
-    # best-effort cleanup (you *don't* need this for overwriting – it's just tidy)
     for f in ("liked_tracks.csv", "liked_tracks_range.json", "top_tracks.csv", "top_tracks_range.json"):
         try:
             os.remove(f)
