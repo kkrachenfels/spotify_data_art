@@ -81,7 +81,7 @@ class Vinyl {
     ctx.rotate(this.rotation);
 
     if (BUTT_IMAGE.complete) {
-      const size = this.outerRadius * 2.9;
+      const size = this.outerRadius * 2.5;
       ctx.drawImage(BUTT_IMAGE, -size / 2, -size / 2, size, size);
     }
 

@@ -22,7 +22,7 @@ const root =
     return d;
   })();
 
-const header = el("h2", {}, "Spotify: Your Top Tracks");
+const header = el("h2", {}, "Spotify: Starving Artist");
 const info = el(
   "p",
   {},
@@ -59,7 +59,7 @@ const startRange = el("input", {
 });
 const SONG_DISPLAY_LIMIT = 15;
 // ------------ VINYL DISPLAY ------------
-const VINYL_CANVAS_WIDTH = 1360;
+const VINYL_CANVAS_WIDTH = 1440;
 const VINYL_CANVAS_HEIGHT = 760;
 const VINYL_CANVAS_LEFT_PADDING = 150;
 const VINYL_COUNT = 15;
@@ -71,6 +71,8 @@ let vinylAnimationId = null;
 let vinylObjects = [];
 let vinylDrawOrder = [];
 let pendingVinylEntries = [];
+let lastVinylIndex = -1;
+let buttSpriteVisible = false;
 let lastVinylTimestamp = null;
 
 const colorCache = new Map();
@@ -125,9 +127,11 @@ const CATERPILLAR_BUTT_SIZE = {
   width: VINYL_OUTER_RADIUS * 2.5,
   height: VINYL_OUTER_RADIUS * 2.5,
 };
-const SPRITE_EDGE_MARGIN = 12;
+
 const CATERPILLAR_CANVAS_MARGIN = VINYL_OUTER_RADIUS;
 const WAVE_START_OFFSET = FRUIT_CANVAS_WIDTH / 3; // + CATERPILLAR_CANVAS_MARGIN;
+const BUTT_ROTATION_SPEED = 0.3;
+const VINYL_CANVAS_EXTRA_WIDTH = 16;
 
 class CaterpillarSprite {
   constructor(src, width, height) {
@@ -144,6 +148,8 @@ class CaterpillarSprite {
     this.image.onerror = () => {
       this.ready = false;
     };
+    this.rotation = 0;
+    this.angularVelocity = 0;
   }
 
   setPosition(point) {
@@ -153,13 +159,24 @@ class CaterpillarSprite {
   draw(ctx) {
     if (!this.ready || !this.position) return;
     const { x, y } = this.position;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(this.rotation);
     ctx.drawImage(
       this.image,
-      x - this.width / 2,
-      y - this.height / 2,
+      -this.width / 2,
+      -this.height / 2,
       this.width,
       this.height
     );
+    ctx.restore();
+  }
+
+  update(deltaSeconds) {
+    if (this.angularVelocity) {
+      this.rotation =
+        (this.rotation + this.angularVelocity * deltaSeconds) % (Math.PI * 2);
+    }
   }
 }
 
@@ -337,7 +354,7 @@ function renderVinylScene(tracks) {
   clearCaterpillarSprites();
   const container = el("div", { class: "vinyl-canvas-container" });
   container.style.position = "relative";
-  container.style.width = `${VINYL_CANVAS_WIDTH + 40}px`;
+  container.style.width = `${VINYL_CANVAS_WIDTH + VINYL_CANVAS_EXTRA_WIDTH}px`;
   container.style.height = `${VINYL_CANVAS_HEIGHT}px`;
   container.style.margin = "16px 0 16px 0";
   container.style.alignSelf = "flex-start";
@@ -685,6 +702,7 @@ function initializeVinylScene(container, layout) {
     added: false,
     vinyl: null,
   }));
+  lastVinylIndex = pendingVinylEntries.length - 1;
 
   const headSprite = caterpillarSprites.head;
   const buttSprite = caterpillarSprites.butt;
@@ -697,21 +715,20 @@ function initializeVinylScene(container, layout) {
     headSprite.position = pos || headEntry.pathPoint;
   }
   if (buttSprite && buttEntry?.pathPoint) {
-    const pos = clampSpritePosition(
-      buttEntry.pathPoint,
-      buttSprite,
-      buttEntry.clampMargin
-    );
-    buttSprite.position = pos || buttEntry.pathPoint;
+    const buttPoint = {
+      ...buttEntry.pathPoint,
+      x: buttEntry.pathPoint.x,
+    };
+    const pos = clampSpritePosition(buttPoint, buttSprite, buttEntry.clampMargin);
+    buttSprite.position = pos || buttPoint;
   }
 
   vinylDrawOrder = [];
   if (headSprite) {
     vinylDrawOrder.push({ type: "sprite", sprite: headSprite });
   }
-  if (buttSprite) {
-    vinylDrawOrder.push({ type: "sprite", sprite: buttSprite });
-  }
+  buttSpriteVisible = false;
+  lastVinylIndex = pendingVinylEntries.length - 1;
 
   lastVinylTimestamp = null;
   vinylAnimationId = requestAnimationFrame(animateVinyls);
@@ -768,6 +785,9 @@ function addVinylFromEntry(entry) {
 
   entry.vinyl = vinyl;
   entry.added = true;
+  if (entry.index === lastVinylIndex) {
+    showButtSprite();
+  }
 }
 
 function addVinylForTrackIndex(index) {
@@ -776,6 +796,15 @@ function addVinylForTrackIndex(index) {
 
 function onFruitAnimationComplete(trackIndex) {
   addVinylForTrackIndex(trackIndex);
+}
+
+function showButtSprite() {
+  if (buttSpriteVisible) return;
+  const sprite = caterpillarSprites.butt;
+  if (!sprite) return;
+  sprite.angularVelocity = BUTT_ROTATION_SPEED;
+  buttSpriteVisible = true;
+  vinylDrawOrder.push({ type: "sprite", sprite });
 }
 
 function animateVinyls(timestamp) {
@@ -790,6 +819,9 @@ function animateVinyls(timestamp) {
 
   vinylDrawOrder.forEach((entry) => {
     if (entry.type === "sprite") {
+      if (typeof entry.sprite.update === "function") {
+        entry.sprite.update(delta);
+      }
       entry.sprite.draw(vinylCtx);
       return;
     }
@@ -838,7 +870,7 @@ function clamp(value, min, max) {
 function clampSpritePosition(point, sprite, margin = 0) {
   if (!point || !sprite) return null;
   const minX = -sprite.width / 2 + margin;
-  const maxX = VINYL_CANVAS_WIDTH + sprite.width / 2 - margin;
+  const maxX = VINYL_CANVAS_WIDTH + sprite.width / 1.7 - margin;
   const minY = -sprite.height / 2 + margin;
   const maxY = VINYL_CANVAS_HEIGHT + sprite.height / 2 - margin;
   return {
