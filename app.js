@@ -101,17 +101,16 @@ Object.entries(FRUIT_ASSETS).forEach(([name, src]) => {
 const FRUIT_IMAGE_VALUES = Object.values(fruitImageMap);
 
 const WAVE_COLOR_LIMIT = 10;
-const WAVE_OPACITY = 0.5;
-const WAVE_SPEED = 0.2;
-const WAVE_PHASE_LIMIT = Math.PI * 2;
+const WAVE_OPACITY = 0.7;
+const WAVE_SPEED_DEFAULT = 0.2;
 
 let waveCanvas = null;
 let waveCtx = null;
 let waveBackgroundColors = [];
 let waveAnimationId = null;
 let wavePhase = 0;
-let wavePhaseDirection = 1;
 let waveLastWaveTimestamp = null;
+let waveSpeed = WAVE_SPEED_DEFAULT;
 
 const CATERPILLAR_MARGIN = 12;
 
@@ -363,10 +362,11 @@ function renderVinylScene(tracks) {
     return;
   }
 
+  const selected = tracks.slice(0, VINYL_COUNT);
+  updateWaveSpeedFromTracks(selected);
   setupWaveBackground(container);
   updateWavePalette([]);
 
-  const selected = tracks.slice(0, VINYL_COUNT);
   resetFruitSequence(selected);
   initializeVinylScene(
     container,
@@ -399,15 +399,27 @@ function setupWaveBackground(container) {
   waveCanvas.style.position = "absolute";
   waveCanvas.style.top = "0";
   waveCanvas.style.left = "0";
+  waveCanvas.style.right = "0";
   waveCanvas.style.zIndex = "0";
   waveCanvas.style.pointerEvents = "none";
-  waveCanvas.style.width = `${VINYL_CANVAS_WIDTH}px`;
+  waveCanvas.style.width = "100%";
   waveCanvas.style.height = `${VINYL_CANVAS_HEIGHT}px`;
   container.appendChild(waveCanvas);
+  const containerWidth =
+    container.clientWidth ||
+    container.offsetWidth ||
+    Math.ceil(container.getBoundingClientRect().width) ||
+    VINYL_CANVAS_WIDTH;
+  const computedWidth = Math.max(
+    VINYL_CANVAS_WIDTH,
+    containerWidth,
+    container.scrollWidth || 0
+  );
+  waveCanvas.width = computedWidth;
+  waveCanvas.height = VINYL_CANVAS_HEIGHT;
   waveCtx = waveCanvas.getContext("2d");
   waveBackgroundColors = [];
   wavePhase = 0;
-  wavePhaseDirection = 1;
   waveLastWaveTimestamp = null;
 }
 
@@ -426,6 +438,29 @@ function updateWavePalette(colorSets) {
   startWaveBackgroundAnimation();
 }
 
+function getTrackBpmEstimate(track) {
+  const bpm =
+    typeof track?.bpm === "number"
+      ? track.bpm
+      : typeof track?.tempo === "number"
+      ? track.tempo
+      : null;
+  if (bpm != null) return bpm;
+  const popularity = track?.popularity ?? 60;
+  return Math.max(70, Math.round(popularity * 1.25 + 5));
+}
+
+function updateWaveSpeedFromTracks(tracks) {
+  if (!tracks?.length) {
+    waveSpeed = WAVE_SPEED_DEFAULT;
+    return;
+  }
+  const bpms = tracks.map(getTrackBpmEstimate);
+  const avgBpm = bpms.reduce((sum, val) => sum + val, 0) / bpms.length;
+  const normalized = avgBpm / 120;
+  waveSpeed = Math.max(0.08, Math.min(0.5, normalized * WAVE_SPEED_DEFAULT));
+}
+
 function startWaveBackgroundAnimation() {
   if (!waveCtx || !waveBackgroundColors.length || waveAnimationId) return;
   waveAnimationId = requestAnimationFrame(animateWaveBackground);
@@ -441,7 +476,7 @@ function animateWaveBackground(timestamp) {
   if (!waveLastWaveTimestamp) waveLastWaveTimestamp = timestamp;
   const delta = (timestamp - waveLastWaveTimestamp) / 1000;
   waveLastWaveTimestamp = timestamp;
-  wavePhase = (wavePhase + WAVE_SPEED * delta) % (Math.PI * 4);
+  wavePhase = (wavePhase + waveSpeed * delta) % (Math.PI * 4);
   const { width, height } = waveCanvas;
   waveCtx.clearRect(0, 0, width, height);
   waveCtx.globalAlpha = WAVE_OPACITY;
@@ -481,7 +516,7 @@ function stopWaveBackgroundAnimation() {
   waveLastWaveTimestamp = null;
   waveBackgroundColors = [];
   wavePhase = 0;
-  wavePhaseDirection = 1;
+  waveSpeed = WAVE_SPEED_DEFAULT;
   if (waveCtx && waveCanvas) {
     waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
   }
