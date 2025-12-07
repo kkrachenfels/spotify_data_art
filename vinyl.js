@@ -28,6 +28,7 @@ class Vinyl {
     this.album = "";
     this.bpm = 0;
     this.hoverBpm = null;
+    this.hoverLinesOverride = null;
 
     // Hover state
     this._hovered = false;
@@ -217,6 +218,10 @@ class Vinyl {
    * Counter-rotates so it reads horizontally.
    */
   _drawHoverHud(ctx) {
+    if (this.hoverLinesOverride && this.hoverLinesOverride.length) {
+      this._drawCustomHoverLines(ctx, this.hoverLinesOverride);
+      return;
+    }
     const hoverBpm = this.hoverBpm ?? (this.bpm ? Math.round(this.bpm) : null);
     const lines = [
       this.trackName || "",
@@ -297,6 +302,49 @@ class Vinyl {
     ctx.closePath();
   }
 
+  _drawCustomHoverLines(ctx, lines) {
+    ctx.save();
+    ctx.rotate(-this.rotation);
+
+    const pad = 10;
+    const fontSize = Math.max(12, Math.floor(this.outerRadius * 0.12));
+    ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    ctx.textBaseline = "top";
+
+    let w = 0;
+    for (const s of lines) w = Math.max(w, ctx.measureText(s).width);
+    const lh = fontSize * 1.2;
+    const h = lh * lines.length;
+
+    const boxW = w + pad * 2;
+    const boxH = h + pad * 2;
+
+    const margin = 16;
+    let x = this.outerRadius + margin;
+    let y = -boxH / 2;
+
+    const canvas = ctx.canvas;
+    if (canvas && typeof canvas.width === "number") {
+      const rightCanvasX = this.position.x + (x + boxW);
+      if (rightCanvasX + 8 > canvas.width) {
+        x = -(this.outerRadius + margin) - boxW;
+      }
+    }
+
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    this._roundedRect(ctx, x, y, boxW, boxH, 8);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    let ty = y + pad;
+    for (const s of lines) {
+      ctx.fillText(s, x + pad, ty);
+      ty += lh;
+    }
+
+    ctx.restore();
+  }
+
   /**
    * Sets the drift velocity.
    * @param {number} vx
@@ -361,6 +409,10 @@ class Vinyl {
    */
   setTrackInfo(name, bpm, spinsPerBeat = 0.05) {
     this.setTrackMeta({ title: name, bpm, spinsPerBeat });
+  }
+
+  setHoverLinesOverride(lines) {
+    this.hoverLinesOverride = Array.isArray(lines) ? lines : null;
   }
 }
 

@@ -207,6 +207,13 @@ startRange.addEventListener("input", () => {
 
 // pick your default: "short_term" | "medium_term" | "long_term"
 let currentTimeRange = "long_term";
+let currentDataType = "tracks";
+let pendingDataType = "tracks";
+const dataTypeOptions = [
+  { label: "Top Tracks", value: "tracks" },
+  { label: "Top Artists", value: "artists" },
+];
+let dataTypeOptionLabels = [];
 let pendingTimeRange = currentTimeRange;
 const timeRangeOptions = [
   { label: "1 month", value: "short_term" },
@@ -260,22 +267,68 @@ function buildTimeRangeControls() {
 
 const timeRangeControls = buildTimeRangeControls();
 
+function updatePendingDataType(value) {
+  pendingDataType = value;
+  dataTypeOptionLabels.forEach((lbl) => {
+    lbl.classList.toggle("active", lbl.dataset.range === value);
+  });
+}
+
+function buildDataTypeControls() {
+  const container = document.createElement("div");
+  container.className = "data-type-controls";
+  container.appendChild(el("span", { class: "time-range-label" }, "Data: "));
+  container.appendChild(document.createElement("br"));
+
+  dataTypeOptions.forEach((option) => {
+    const id = `data-type-${option.value}`;
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "data-type";
+    radio.value = option.value;
+    radio.id = id;
+    radio.checked = option.value === pendingDataType;
+    radio.addEventListener("change", () => {
+      if (radio.checked) updatePendingDataType(option.value);
+    });
+
+    const label = document.createElement("label");
+    label.className =
+      "time-range-option" + (option.value === pendingDataType ? " active" : "");
+    label.dataset.range = option.value;
+    label.htmlFor = id;
+    label.style.display = "flex";
+    label.style.alignItems = "center";
+    label.style.margin = "4px 0";
+    label.appendChild(radio);
+    label.appendChild(document.createTextNode(option.label));
+
+    dataTypeOptionLabels.push(label);
+    container.appendChild(label);
+  });
+
+  return container;
+}
+
+const dataTypeControls = buildDataTypeControls();
+
 // --- FILTER SECTION (now can safely use timeRangeControls) ---
 
 const filterSection = el(
   "section",
   { id: "date-filter" },
-  el("h3", {}, "Filter top tracks"),
+  el("h3", {}, "Filter Spotify data"),
   timeRangeControls,
+  dataTypeControls,
   el(
     "p",
     { class: "filter-hint" },
-    `Pick a time window and starting rank, then press "Update filter" to fetch tracks from there.`
+    `Pick a time window, type of top result, and starting rank, then press "Update filter" to fetch data.`
   ),
   el(
     "div",
     { class: "slider-control" },
-    el("label", { for: "start-range" }, "Top Tracks Range:"),
+    el("label", { for: "start-range" }, "Rank range:"),
     startLabel,
     startRange
   ),
@@ -285,7 +338,7 @@ const filterSection = el(
 const rangeStatus = el(
   "p",
   { id: "range-status" },
-  "Load top tracks to enable the rank filter."
+  "Load top tracks or artists to enable the rank filter."
 );
 
 let vinylMouse = { x: -9999, y: -9999 };
@@ -339,11 +392,15 @@ function applyCurrentRange() {
   animationsActive = false;
   eatBtn.disabled = true;
   currentTimeRange = pendingTimeRange;
-  list.innerHTML = "Loading top tracks...";
-  rangeStatus.textContent = "Fetching top tracks from Spotify...";
+  currentDataType = pendingDataType;
+  const loadingLabel =
+    currentDataType === "artists" ? "top artists" : "top tracks";
+  rangeStatus.textContent = `Fetching ${loadingLabel} from Spotify...`;
+  list.innerHTML = `Loading ${loadingLabel}...`;
+  const endpoint = currentDataType === "artists" ? "/top_artists" : "/top_tracks";
 
   fetch(
-    `/top_tracks?offset=${offsetRank}&time_range=${encodeURIComponent(
+    `${endpoint}?offset=${offsetRank}&time_range=${encodeURIComponent(
       currentTimeRange
     )}`,
     { cache: "no-store" }
@@ -360,14 +417,17 @@ function applyCurrentRange() {
       const shown = Math.min(items.length, SONG_DISPLAY_LIMIT);
       renderVinylScene(items.slice(0, shown));
       const total = items.length;
+      const typeLabel = currentDataType === "artists" ? "artists" : "tracks";
       rangeStatus.textContent = total
-        ? `Showing ${shown} tracks starting from rank ${offsetRank}. Press "Eat!" to animate.`
-        : `No tracks found starting at rank ${offsetRank}.`;
+        ? `Showing ${shown} ${typeLabel} starting from rank ${offsetRank}. Press "Eat!" to animate.`
+        : `No ${typeLabel} found starting at rank ${offsetRank}.`;
       updateRankRangeLabel(offsetRank);
     })
     .catch((err) => {
-      list.innerHTML = "Failed to load top tracks: " + err;
-      rangeStatus.textContent = err.message || "Unable to load top tracks.";
+      const typeLabel = currentDataType === "artists" ? "artists" : "tracks";
+      list.innerHTML = `Failed to load top ${typeLabel}: ${err}`;
+      rangeStatus.textContent =
+        err.message || `Unable to load top ${typeLabel}.`;
     });
 }
 
@@ -377,10 +437,10 @@ function startEatingAnimations() {
   startFruitPlayback();
   animationsActive = true;
   eatBtn.disabled = true;
-  rangeStatus.textContent = 'Now eating the tracks!';
+  rangeStatus.textContent = 'Now eating the data!';
 }
 
-function renderVinylScene(tracks) {
+function renderVinylScene(items) {
   list.innerHTML = "";
   clearCaterpillarSprites();
   const container = el("div", { class: "vinyl-canvas-container" });
@@ -395,8 +455,8 @@ function renderVinylScene(tracks) {
   container.style.backgroundColor = "#fff";
   list.appendChild(container);
 
-  if (!tracks.length) {
-    list.innerHTML = "No tracks in that rank range.";
+  if (!items.length) {
+    list.innerHTML = "No items in that rank range.";
     stopFruitSequence();
     stopWaveBackgroundAnimation();
     sceneReadyForPlay = false;
@@ -404,7 +464,7 @@ function renderVinylScene(tracks) {
     return;
   }
 
-  const selected = tracks.slice(0, VINYL_COUNT);
+  const selected = items.slice(0, VINYL_COUNT);
   updateWaveSpeedFromTracks(selected);
   setupWaveBackground(container);
   updateWavePalette([]);
@@ -422,7 +482,7 @@ function renderVinylScene(tracks) {
   eatBtn.disabled = !sceneReadyForPlay;
 
   const colorPromises = selected.map((item) =>
-    getProminentColor(item.album_image).then(
+    getProminentColor(item.image || item.album_image).then(
       (color) => color || DEFAULT_SWATCH_COLOR
     )
   );
@@ -691,34 +751,57 @@ function addVinylFromEntry(entry) {
     VINYL_INNER_RADIUS,
     entry.labelColor || DEFAULT_SWATCH_COLOR
   );
-  const track = entry.track;
-  const rankStr = track?.rank ? `#${track.rank} ` : "";
-  const title = `${rankStr}${track?.name || ""}`;
-  const artist = getArtistNamesSafe(track);
-  const rawAlbum = track?.album;
+  const item = entry.track;
+  const isArtist = item?.kind === "artist";
+  const rankStr = item?.rank ? `#${item.rank} ` : "";
+  const artistNames = isArtist ? "" : getArtistNamesSafe(item);
+  const rawAlbum = item?.album;
   const album =
-    typeof rawAlbum === "string"
+    isArtist || !rawAlbum
+      ? ""
+      : typeof rawAlbum === "string"
       ? rawAlbum
-      : rawAlbum?.name || track?.album_name || "";
+      : rawAlbum?.name || item?.album_name || "";
+  const title = isArtist ? item?.name || "Unknown artist" : `${rankStr}${item?.name || ""}`;
 
   const bpm =
-    (typeof track?.bpm === "number" ? track.bpm : null) ??
-    (typeof track?.tempo === "number" ? track.tempo : null) ??
-    null;
+    isArtist
+      ? null
+      : (typeof item?.bpm === "number" ? item.bpm : null) ??
+        (typeof item?.tempo === "number" ? item.tempo : null) ??
+        null;
 
-  const derivedBpm = getTrackBpmEstimate(track);
+  const derivedBpm = getTrackBpmEstimate(item);
 
   vinyl.setTrackMeta({
     title,
-    artist,
+    artist: isArtist ? "" : artistNames,
     album,
     bpm,
     spinsPerBeat: 0.05,
-    hoverBpm: bpm ?? derivedBpm,
+    hoverBpm: isArtist ? null : bpm ?? derivedBpm,
   });
 
-  if (bpm == null) {
-    vinyl.setAngularVelocity(0.6 + (vinylObjects.length % 3) * 0.15);
+  if (isArtist) {
+    const genresText = Array.isArray(item?.genres) && item.genres.length
+      ? item.genres.join(", ")
+      : "Unknown";
+    vinyl.setHoverLinesOverride([
+      `Artist: ${item?.name || "Unknown"}`,
+      `Popularity: ${item?.popularity ?? "N/A"}`,
+      `Genres: ${genresText}`,
+    ]);
+    const pseudoBpm = Math.max(
+      70,
+      Math.round((item?.popularity ?? 60) * 1.25 + 5)
+    );
+    const rotationsPerSecond = (pseudoBpm / 60) * 0.05;
+    vinyl.setAngularVelocity(rotationsPerSecond * 2 * Math.PI);
+  } else {
+    vinyl.setHoverLinesOverride(null);
+    if (bpm == null) {
+      vinyl.setAngularVelocity(0.6 + (vinylObjects.length % 3) * 0.15);
+    }
   }
 
   vinyl.setSwirlColors(entry.colorSet);
