@@ -17,8 +17,8 @@ class Fruit {
     // pulse settings
     this.bpm = 0;
     this.pulsesPerBeat = 1; // 1 pulse per beat by default
-    this.minScale = 0.92;
-    this.maxScale = 1.12;
+    this.minScale = 0.84;
+    this.maxScale = 1;
     this.phase = 0; // radians offset
 
     // track meta (not displayed)

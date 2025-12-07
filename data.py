@@ -78,11 +78,12 @@ def _refresh_token():
 
 # ---------------------- TOP TRACKS (long_term) ----------------------
 
-def _parse_top_tracks_items(items, start_rank=1):
+def _parse_top_tracks_items(items, start_rank=1, feature_map=None):
     """Convert /me/top/tracks items to our CSV rows, assigning rank starting at start_rank."""
     rows = []
     rank = start_rank
     for it in items:
+        feature = feature_map.get(it.get('id')) if feature_map else None
         artists = ', '.join(a.get('name') for a in it.get('artists', []))
         album = it.get('album', {}) or {}
         images = album.get('images', [])
@@ -95,6 +96,7 @@ def _parse_top_tracks_items(items, start_rank=1):
             'album_image': album_image,
             'external_url': (it.get('external_urls') or {}).get('spotify'),
             'popularity': it.get('popularity'),
+            'energy': feature.get('energy') if feature else None,
             'album_release_date': album.get('release_date'),
         })
         rank += 1
@@ -113,6 +115,19 @@ def _fetch_top_tracks_page(headers, offset, limit=50, time_range='long_term'):
         return [], None
     data = r.json()
     return data.get('items', []), data.get('total')
+
+
+def _fetch_audio_features(headers, track_ids):
+    if not track_ids:
+        return {}
+    params = {'ids': ','.join(track_ids[:100])}
+    r = requests.get(f"{API_BASE}/audio-features", headers=headers, params=params)
+    if r.status_code != 200:
+        print(f"Failed to fetch audio features: {r.status_code} {r.text}")
+        return {}
+    data = r.json()
+    features = data.get('audio_features', []) or []
+    return {feat.get('id'): feat for feat in features if feat and feat.get('id')}
 
 
 @app.route('/top_tracks')
@@ -139,6 +154,7 @@ def top_tracks():
     if requested_time_range not in ('short_term', 'medium_term', 'long_term'):
         requested_time_range = 'long_term'
 
+    feature_map = {}
     try:
         items, _ = _fetch_top_tracks_page(
             headers,
@@ -146,11 +162,13 @@ def top_tracks():
             limit=TOP_TRACKS_WINDOW,
             time_range=requested_time_range,
         )
+        track_ids = [it.get('id') for it in items if it.get('id')]
+        feature_map = _fetch_audio_features(headers, track_ids)
 
     except Exception as err:
         return jsonify({'error': 'spotify_api_failed', 'details': str(err)}), 500
 
-    rows = _parse_top_tracks_items(items, start_rank=start_rank)
+    rows = _parse_top_tracks_items(items, start_rank=start_rank, feature_map=feature_map)
     return jsonify({
         'items': rows,
         'min_rank': start_rank,

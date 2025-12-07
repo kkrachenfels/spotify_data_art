@@ -229,15 +229,6 @@ const timeRangeControls = el(
     },
     "1 year"
   ),
-  el(
-    "button",
-    {
-      class: "compact-button time-range-button",
-      "data-range": "long_term",
-      onclick: () => setTimeRange("long_term"),
-    },
-    "All time"
-  )
 );
 
 // --- FILTER SECTION (now can safely use timeRangeControls) ---
@@ -447,8 +438,14 @@ function getTrackBpmEstimate(track) {
       ? track.tempo
       : null;
   if (bpm != null) return bpm;
-  const popularity = track?.popularity ?? 60;
-  return Math.max(70, Math.round(popularity * 1.25 + 5));
+  const energy =
+    typeof track?.energy === "number"
+      ? track.energy
+      : typeof track?.popularity === "number"
+      ? Math.min(Math.max(track.popularity / 100, 0), 1)
+      : 0.5;
+  const estimated = Math.round(energy * 120 + 60); // energy 0→1 maps to 60-180 BPM
+  return Math.max(70, estimated);
 }
 
 function updateWaveSpeedFromTracks(tracks) {
@@ -748,10 +745,7 @@ function addVinylFromEntry(entry) {
     (typeof track?.tempo === "number" ? track.tempo : null) ??
     null;
 
-  const derivedBpm = Math.max(
-    70,
-    Math.round((track?.popularity ?? 60) * 1.25 + 5)
-  );
+  const derivedBpm = getTrackBpmEstimate(track);
 
   vinyl.setTrackMeta({
     title,
