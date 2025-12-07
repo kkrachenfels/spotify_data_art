@@ -233,6 +233,33 @@ input[type="range"]:disabled {
   margin-top: 6px;
 }
 
+.wave-label-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  margin-top: 6px;
+  cursor: pointer;
+}
+.wave-label-toggle input:disabled + span {
+  opacity: 0.5;
+}
+.wave-background-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  margin-top: 6px;
+  cursor: pointer;
+}
+.wave-toggle-group {
+  display: flex;
+  flex-direction: column;
+}
+.wave-label-toggle {
+  margin-left: 18px;
+}
+
 .time-range-option {
   display: flex;
   align-items: center;
@@ -248,6 +275,11 @@ input[type="range"]:disabled {
 }
 
 .time-range-option input[type="radio"] {
+  accent-color: #1db954;
+}
+
+.wave-label-toggle input[type="checkbox"],
+.wave-background-toggle input[type="checkbox"] {
   accent-color: #1db954;
 }
 

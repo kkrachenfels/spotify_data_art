@@ -95,6 +95,11 @@ function animateWaveBackground(timestamp) {
     waveAnimationId = requestAnimationFrame(animateWaveBackground);
     return;
   }
+  if (typeof showWaveBackgrounds === "boolean" && !showWaveBackgrounds) {
+    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    waveAnimationId = requestAnimationFrame(animateWaveBackground);
+    return;
+  }
   if (!waveLastWaveTimestamp) waveLastWaveTimestamp = timestamp;
   const delta = (timestamp - waveLastWaveTimestamp) / 1000;
   waveLastWaveTimestamp = timestamp;
@@ -125,7 +130,7 @@ function animateWaveBackground(timestamp) {
     waveCtx.closePath();
     waveCtx.fill();
     const label = waveLabels[idx];
-    if (label) {
+    if (label && typeof showWaveLabels === "boolean" ? showWaveLabels : true) {
       const savedComposite = waveCtx.globalCompositeOperation;
       waveCtx.globalCompositeOperation = "source-over";
       const textColor = getContrastingTextColor(color);

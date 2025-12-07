@@ -311,6 +311,35 @@ function buildDataTypeControls() {
 }
 
 const dataTypeControls = buildDataTypeControls();
+let showWaveLabels = true;
+let showWaveBackgrounds = true;
+const waveLabelCheckbox = document.createElement("input");
+waveLabelCheckbox.type = "checkbox";
+waveLabelCheckbox.id = "show-wave-labels";
+waveLabelCheckbox.checked = showWaveLabels;
+waveLabelCheckbox.addEventListener("change", () => {
+  showWaveLabels = waveLabelCheckbox.checked;
+});
+const waveLabelToggle = el(
+  "label",
+  { class: "wave-label-toggle", for: "show-wave-labels" },
+  waveLabelCheckbox,
+  el("span", {}, "Show background labels")
+);
+const waveBackgroundCheckbox = document.createElement("input");
+waveBackgroundCheckbox.type = "checkbox";
+waveBackgroundCheckbox.id = "show-wave-background";
+waveBackgroundCheckbox.checked = showWaveBackgrounds;
+waveBackgroundCheckbox.addEventListener("change", () => {
+  showWaveBackgrounds = waveBackgroundCheckbox.checked;
+  waveLabelCheckbox.disabled = !showWaveBackgrounds;
+});
+const waveBackgroundToggle = el(
+  "label",
+  { class: "wave-background-toggle", for: "show-wave-background" },
+  waveBackgroundCheckbox,
+  "Show full background"
+);
 
 // --- FILTER SECTION (now can safely use timeRangeControls) ---
 
@@ -320,6 +349,7 @@ const filterSection = el(
   el("h3", {}, "Filter Spotify data"),
   timeRangeControls,
   dataTypeControls,
+  el("div", { class: "wave-toggle-group" }, waveBackgroundToggle, waveLabelToggle),
   el(
     "p",
     { class: "filter-hint" },
