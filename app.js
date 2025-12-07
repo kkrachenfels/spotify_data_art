@@ -59,8 +59,9 @@ const startRange = el("input", {
 });
 const SONG_DISPLAY_LIMIT = 15;
 // ------------ VINYL DISPLAY ------------
-const VINYL_CANVAS_WIDTH = 1260;
+const VINYL_CANVAS_WIDTH = 1360;
 const VINYL_CANVAS_HEIGHT = 760;
+const VINYL_CANVAS_LEFT_PADDING = 120;
 const VINYL_COUNT = 15;
 const VINYL_OUTER_RADIUS = 68;
 const VINYL_INNER_RADIUS = 32;
@@ -257,9 +258,9 @@ const rangeStatus = el(
 );
 
 let vinylMouse = { x: -9999, y: -9999 };
-const floatingControls = el(
+const controlsColumn = el(
   "div",
-  { class: "floating-controls" },
+  { class: "control-column" },
   filterSection,
   rangeStatus
 );
@@ -267,15 +268,15 @@ const fruitCanvas = document.createElement("canvas");
 fruitCanvas.width = FRUIT_CANVAS_WIDTH;
 fruitCanvas.height = FRUIT_CANVAS_HEIGHT;
 const fruitCtx = fruitCanvas.getContext("2d");
-const fruitPanel = el("div", { class: "fruit-panel" }, fruitCanvas);
-const vinylPanel = el("div", { class: "vinyl-panel" }, list);
-const visualColumn = el(
+const fruitOverlay = el("div", { class: "fruit-overlay" }, fruitCanvas);
+const vinylPanel = el("div", { class: "vinyl-panel" }, fruitOverlay, list);
+const visualColumn = el("div", { class: "visual-column" }, vinylPanel);
+const contentLayout = el(
   "div",
-  { class: "visual-column" },
-  fruitPanel,
-  vinylPanel
+  { class: "content-layout" },
+  controlsColumn,
+  visualColumn
 );
-const contentLayout = el("div", { class: "content-layout" }, visualColumn);
 let fruitQueue = [];
 let fruitSpawnIndex = 0;
 let fruitIntervalId = null;
@@ -287,7 +288,6 @@ root.appendChild(header);
 root.appendChild(info);
 root.appendChild(loginBtn);
 root.appendChild(logoutBtn);
-root.appendChild(floatingControls);
 root.appendChild(contentLayout);
 
 function applyCurrentRange() {
@@ -333,12 +333,11 @@ function renderVinylScene(tracks) {
   clearCaterpillarSprites();
   const container = el("div", { class: "vinyl-canvas-container" });
   container.style.position = "relative";
-  container.style.width = `${VINYL_CANVAS_WIDTH}px`;
+  container.style.width = `${VINYL_CANVAS_WIDTH + 40}px`;
   container.style.height = `${VINYL_CANVAS_HEIGHT}px`;
   container.style.margin = "16px 0 16px 0";
   container.style.alignSelf = "flex-start";
   container.style.paddingLeft = "16px";
-  container.style.width = `${VINYL_CANVAS_WIDTH + 40}px`;
   container.style.border = "none";
   container.style.borderRadius = "12px";
   container.style.backgroundColor = "#fff";
@@ -478,7 +477,7 @@ function initializeVinylScene(container, tracks, colors) {
   const layoutSequence = [];
   layoutSequence.push({
     kind: "head",
-    length: -(entitySpacing + headExtraGap),
+    length: -(entitySpacing * 0.8), // + headExtraGap),
     clampMargin:
       CATERPILLAR_CANVAS_MARGIN + CATERPILLAR_HEAD_SIZE.width / 2 + 8,
   });
@@ -670,10 +669,11 @@ function offsetAlongPath(base, neighbor, distance, forward = true) {
 function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
   const horizontalPadding = radius + 20;
   const verticalPadding = radius + 20;
-  const width = Math.max(
+  const baseWidth = Math.max(
     canvasWidth - 2 * horizontalPadding - WAVE_START_OFFSET,
     0
   );
+  const width = Math.max(baseWidth - VINYL_CANVAS_LEFT_PADDING, 0);
   const phaseShift = -Math.PI / 2;
   const bottomY = canvasHeight - verticalPadding - radius - 4;
   const topBound = verticalPadding + radius + 4;
@@ -685,7 +685,11 @@ function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
   let prevPoint = null;
   for (let i = 0; i <= steps; i += 1) {
     const u = i / steps;
-    const x = horizontalPadding + WAVE_START_OFFSET + u * width;
+    const x =
+      horizontalPadding +
+      WAVE_START_OFFSET +
+      u * width +
+      VINYL_CANVAS_LEFT_PADDING;
     // Start the wave at the bottom of the canvas and move upward from there.
     const y =
       bottomY -
