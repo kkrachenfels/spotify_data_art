@@ -74,13 +74,33 @@ let pendingVinylEntries = [];
 let lastVinylIndex = -1;
 let buttSpriteVisible = false;
 let lastVinylTimestamp = null;
+let headSpriteEntry = null;
+let headVisible = false;
+let sceneReadyForPlay = false;
+let animationsActive = false;
 
 const colorCache = new Map();
 const DEFAULT_SWATCH_COLOR = "#555";
-const applyRangeBtn = el(
+const updateFilterBtn = el(
   "button",
   { id: "apply-range", class: "compact-button", onclick: applyCurrentRange },
   "Update filter"
+);
+const eatBtn = el(
+  "button",
+  {
+    id: "eat-button",
+    class: "compact-button",
+    onclick: startEatingAnimations,
+    disabled: true,
+  },
+  "Eat!"
+);
+const filterButtonGroup = el(
+  "div",
+  { class: "filter-buttons" },
+  updateFilterBtn,
+  eatBtn
 );
 const MAX_TOP_TRACKS = 100;
 const FRUIT_CANVAS_WIDTH = 280;
@@ -273,7 +293,7 @@ const filterSection = el(
     startLabel,
     startRange
   ),
-  applyRangeBtn
+  filterButtonGroup
 );
 
 const rangeStatus = el(
@@ -321,6 +341,12 @@ function applyCurrentRange() {
     1,
     Math.min(startRank, MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1)
   );
+  stopVinylAnimation();
+  stopFruitAnimation();
+  stopFruitInterval();
+  sceneReadyForPlay = false;
+  animationsActive = false;
+  eatBtn.disabled = true;
   currentTimeRange = pendingTimeRange;
   list.innerHTML = "Loading top tracks...";
   rangeStatus.textContent = "Fetching top tracks from Spotify...";
@@ -344,7 +370,7 @@ function applyCurrentRange() {
       renderVinylScene(items.slice(0, shown));
       const total = items.length;
       rangeStatus.textContent = total
-        ? `Showing ${shown} tracks starting from rank ${offsetRank}.`
+        ? `Showing ${shown} tracks starting from rank ${offsetRank}. Press "Eat!" to animate.`
         : `No tracks found starting at rank ${offsetRank}.`;
       startLabel.textContent = `From rank: ${offsetRank}`;
     })
@@ -352,6 +378,15 @@ function applyCurrentRange() {
       list.innerHTML = "Failed to load top tracks: " + err;
       rangeStatus.textContent = err.message || "Unable to load top tracks.";
     });
+}
+
+function startEatingAnimations() {
+  if (!sceneReadyForPlay || animationsActive) return;
+  startVinylPlayback();
+  startFruitPlayback();
+  animationsActive = true;
+  eatBtn.disabled = true;
+  rangeStatus.textContent = 'Now eating the tracks!';
 }
 
 function renderVinylScene(tracks) {
@@ -373,6 +408,8 @@ function renderVinylScene(tracks) {
     list.innerHTML = "No tracks in that rank range.";
     stopFruitSequence();
     stopWaveBackgroundAnimation();
+    sceneReadyForPlay = false;
+    eatBtn.disabled = true;
     return;
   }
 
@@ -387,8 +424,11 @@ function renderVinylScene(tracks) {
   ]);
   const layout = buildVinylLayout(selected, initialColorSets);
   initializeVinylScene(container, layout);
-
-  resetFruitSequence(selected);
+  drawVinylSnapshot();
+  prepareFruitSequence(selected);
+  sceneReadyForPlay = selected.length > 0;
+  animationsActive = false;
+  eatBtn.disabled = !sceneReadyForPlay;
 
   const colorPromises = selected.map((item) =>
     getProminentColor(item.album_image).then(
@@ -730,13 +770,43 @@ function initializeVinylScene(container, layout) {
 
   vinylDrawOrder = [];
   if (headSprite) {
-    vinylDrawOrder.push({ type: "sprite", sprite: headSprite });
+    headSpriteEntry = { type: "sprite", sprite: headSprite };
   }
   buttSpriteVisible = false;
   lastVinylIndex = pendingVinylEntries.length - 1;
 
   lastVinylTimestamp = null;
+}
+
+function drawVinylSnapshot() {
+  if (!vinylCtx) return;
+  vinylCtx.clearRect(0, 0, VINYL_CANVAS_WIDTH, VINYL_CANVAS_HEIGHT);
+  vinylDrawOrder.forEach((entry) => {
+    if (entry.type === "sprite") {
+      entry.sprite.draw(vinylCtx);
+      return;
+    }
+    entry.vinyl.draw(vinylCtx);
+  });
+}
+
+function startVinylPlayback() {
+  if (vinylAnimationId) return;
+  showHeadSprite();
+  lastVinylTimestamp = null;
   vinylAnimationId = requestAnimationFrame(animateVinyls);
+}
+
+function showHeadSprite() {
+  if (!headSpriteEntry || headVisible) return;
+  vinylDrawOrder.unshift(headSpriteEntry);
+  headVisible = true;
+}
+
+function hideHeadSprite() {
+  if (!headSpriteEntry || !headVisible) return;
+  vinylDrawOrder = vinylDrawOrder.filter((entry) => entry !== headSpriteEntry);
+  headVisible = false;
 }
 
 function addVinylFromEntry(entry) {
@@ -846,6 +916,7 @@ function stopVinylAnimation() {
     cancelAnimationFrame(vinylAnimationId);
     vinylAnimationId = null;
   }
+  hideHeadSprite();
 }
 
 function updateVinylColors(colorSets) {
@@ -1080,29 +1151,39 @@ function pickRandomFruitImage() {
   return FRUIT_IMAGE_VALUES[index];
 }
 
-function resetFruitSequence(tracks) {
+function prepareFruitSequence(tracks) {
   stopFruitInterval();
+  stopFruitAnimation();
   fruitQueue = tracks.slice(0, Math.min(tracks.length, VINYL_COUNT));
   fruitSpawnIndex = 0;
   fruitObjects.length = 0;
-  if (!fruitQueue.length) {
-    if (fruitCtx)
-      fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
-    return;
-  }
+  lastFruitTimestamp = null;
   if (fruitCtx)
     fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
+}
+
+function startFruitPlayback() {
+  if (!fruitQueue.length) return;
+  stopFruitAnimation();
+  stopFruitInterval();
+  fruitObjects.length = 0;
+  fruitSpawnIndex = 0;
+  lastFruitTimestamp = null;
   spawnNextFruit();
   if (fruitQueue.length > 1) {
     fruitIntervalId = setInterval(() => {
       spawnNextFruit();
     }, FRUIT_SPAWN_INTERVAL);
   }
+  startFruitAnimation();
 }
 
 function stopFruitSequence() {
   stopFruitInterval();
   fruitObjects.length = 0;
+  fruitQueue = [];
+  fruitSpawnIndex = 0;
+  lastFruitTimestamp = null;
   if (fruitCtx)
     fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
 }
