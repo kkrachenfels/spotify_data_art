@@ -171,7 +171,8 @@ class Vinyl {
   _drawTrackNameOnRing(ctx) {
     if (!this.trackName) return;
 
-    const text = this.trackName.toUpperCase();
+    const truncated = String(this.trackName).slice(0, 45);
+    const text = truncated.toUpperCase();
 
     // Radius where the text sits: between label and outer edge
     const radius = (this.outerRadius + this.innerRadius) / 2;

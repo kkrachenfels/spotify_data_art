@@ -1,6 +1,6 @@
 const WAVE_COLOR_LIMIT = 10;
 const WAVE_OPACITY = 0.7;
-const WAVE_SPEED_DEFAULT = 0.2;
+const WAVE_SPEED_DEFAULT = 0.3;
 
 let waveCanvas = null;
 let waveCtx = null;
@@ -80,7 +80,7 @@ function updateWaveSpeedFromTracks(tracks) {
   const bpms = tracks.map(getTrackBpmEstimate);
   const avgBpm = bpms.reduce((sum, val) => sum + val, 0) / bpms.length;
   const normalized = avgBpm / 120;
-  waveSpeed = Math.max(0.08, Math.min(0.5, normalized * WAVE_SPEED_DEFAULT));
+  waveSpeed = Math.max(0.4, Math.min(0.5, normalized * WAVE_SPEED_DEFAULT));
 }
 
 function startWaveBackgroundAnimation() {
@@ -103,7 +103,7 @@ function animateWaveBackground(timestamp) {
   if (!waveLastWaveTimestamp) waveLastWaveTimestamp = timestamp;
   const delta = (timestamp - waveLastWaveTimestamp) / 1000;
   waveLastWaveTimestamp = timestamp;
-  wavePhase = (wavePhase + waveSpeed * delta) % (Math.PI * 4);
+  wavePhase += waveSpeed * delta;
   const { width, height } = waveCanvas;
   waveCtx.clearRect(0, 0, width, height);
   waveCtx.globalAlpha = WAVE_OPACITY;
