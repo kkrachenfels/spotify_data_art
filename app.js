@@ -124,6 +124,7 @@ const FRUIT_IMAGE_VALUES = Object.values(fruitImageMap);
 const CATERPILLAR_MARGIN = 12;
 
 const CATERPILLAR_HEAD_SRC = "assets/caterpillar_head.png";
+const CATERPILLAR_HEAD_CLOSED_SRC = "assets/caterpillar_head_closed.png";
 const CATERPILLAR_BUTT_SRC = "assets/caterpillar_butt.png";
 const CATERPILLAR_HEAD_SIZE = {
   width: VINYL_OUTER_RADIUS * 2.5,
@@ -141,21 +142,25 @@ const VINYL_CANVAS_EXTRA_WIDTH = 16;
 
 class CaterpillarSprite {
   constructor(src, width, height) {
-    this.image = new Image();
-    this.image.src = src;
+    this._primaryImage = new Image();
+    this._primaryImage.src = src;
     this.width = width;
     this.height = height;
     this.ready = false;
     this.position = null;
-    this.image.crossOrigin = "Anonymous";
-    this.image.onload = () => {
-      this.ready = true;
-    };
-    this.image.onerror = () => {
-      this.ready = false;
-    };
     this.rotation = 0;
     this.angularVelocity = 0;
+    this._alternateImage = null;
+    this._alternateReady = false;
+    this._useAlternateFrame = false;
+
+    this._primaryImage.crossOrigin = "Anonymous";
+    this._primaryImage.onload = () => {
+      this.ready = true;
+    };
+    this._primaryImage.onerror = () => {
+      this.ready = false;
+    };
   }
 
   setPosition(point) {
@@ -164,12 +169,16 @@ class CaterpillarSprite {
 
   draw(ctx) {
     if (!this.ready || !this.position) return;
+    const useAlternate =
+      this._useAlternateFrame && this._alternateImage && this._alternateReady;
+    const renderImage = useAlternate ? this._alternateImage : this._primaryImage;
+    if (!renderImage?.complete) return;
     const { x, y } = this.position;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(this.rotation);
     ctx.drawImage(
-      this.image,
+      renderImage,
       -this.width / 2,
       -this.height / 2,
       this.width,
@@ -183,6 +192,29 @@ class CaterpillarSprite {
       this.rotation =
         (this.rotation + this.angularVelocity * deltaSeconds) % (Math.PI * 2);
     }
+  }
+
+  setAlternateImage(src) {
+    if (!src) {
+      this._alternateImage = null;
+      this._alternateReady = false;
+      this._useAlternateFrame = false;
+      return;
+    }
+    this._alternateImage = new Image();
+    this._alternateImage.src = src;
+    this._alternateImage.crossOrigin = "Anonymous";
+    this._alternateReady = false;
+    this._alternateImage.onload = () => {
+      this._alternateReady = true;
+    };
+    this._alternateImage.onerror = () => {
+      this._alternateReady = false;
+    };
+  }
+
+  useAlternateFrame(enabled) {
+    this._useAlternateFrame = Boolean(enabled);
   }
 }
 
@@ -198,6 +230,8 @@ const caterpillarSprites = {
     CATERPILLAR_BUTT_SIZE.height
   ),
 };
+
+caterpillarSprites.head.setAlternateImage(CATERPILLAR_HEAD_CLOSED_SRC);
 
 startRange.addEventListener("input", () => {
   updateRankRangeLabel(Number(startRange.value));
@@ -397,6 +431,10 @@ let fruitIntervalId = null;
 let fruitObjects = [];
 let fruitAnimationId = null;
 let lastFruitTimestamp = null;
+const HEAD_MOUTH_TOGGLE_INTERVAL = 0.35;
+let headMouthTimer = 0;
+let headMouthClosedFrame = false;
+const HEAD_CLOSED_ROTATION = -Math.PI / 12;
 
 root.appendChild(header);
 root.appendChild(info);
@@ -776,6 +814,10 @@ function startVinylPlayback() {
 
 function showHeadSprite() {
   if (!headSpriteEntry || headVisible) return;
+  headMouthTimer = 0;
+  headMouthClosedFrame = false;
+  const headSprite = caterpillarSprites.head;
+  if (headSprite) headSprite.useAlternateFrame(false);
   vinylDrawOrder.unshift(headSpriteEntry);
   headVisible = true;
 }
@@ -784,6 +826,10 @@ function hideHeadSprite() {
   if (!headSpriteEntry || !headVisible) return;
   vinylDrawOrder = vinylDrawOrder.filter((entry) => entry !== headSpriteEntry);
   headVisible = false;
+  headMouthTimer = 0;
+  headMouthClosedFrame = false;
+  const headSprite = caterpillarSprites.head;
+  if (headSprite) headSprite.useAlternateFrame(false);
 }
 
 function addVinylFromEntry(entry) {
@@ -910,6 +956,8 @@ function animateVinyls(timestamp) {
 
   vinylCtx.canvas.style.cursor = anyHover ? "pointer" : "default";
 
+  updateHeadMouthAnimation(delta);
+
   hoveredVinyls.forEach((vinyl) => vinyl.drawHoverHud(vinylCtx));
 
   vinylAnimationId = requestAnimationFrame(animateVinyls);
@@ -921,6 +969,25 @@ function stopVinylAnimation() {
     vinylAnimationId = null;
   }
   hideHeadSprite();
+}
+
+function updateHeadMouthAnimation(delta) {
+  const headSprite = caterpillarSprites.head;
+  if (!headSprite) return;
+  if (headVisible) {
+    headMouthTimer += delta;
+    if (headMouthTimer >= HEAD_MOUTH_TOGGLE_INTERVAL) {
+      headMouthTimer -= HEAD_MOUTH_TOGGLE_INTERVAL;
+      headMouthClosedFrame = !headMouthClosedFrame;
+      headSprite.useAlternateFrame(headMouthClosedFrame);
+      headSprite.rotation = headMouthClosedFrame ? HEAD_CLOSED_ROTATION : 0;
+    }
+  } else if (headMouthClosedFrame) {
+    headMouthTimer = 0;
+    headMouthClosedFrame = false;
+    headSprite.useAlternateFrame(false);
+    headSprite.rotation = 0;
+  }
 }
 
 function updateVinylColors(colorSets) {
