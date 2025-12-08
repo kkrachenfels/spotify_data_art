@@ -179,7 +179,7 @@ button:disabled {
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  width: 220px;
+  width: 210px;
   height: 4px;
   border-radius: 999px;
   background: #333;

@@ -10,6 +10,7 @@ let wavePhase = 0;
 let waveLastWaveTimestamp = null;
 let waveSpeed = WAVE_SPEED_DEFAULT;
 let waveLabels = [];
+let waveOpacity = WAVE_OPACITY;
 
 function setupWaveBackground(container) {
   stopWaveBackgroundAnimation();
@@ -83,6 +84,12 @@ function updateWaveSpeedFromTracks(tracks) {
   waveSpeed = Math.max(0.4, Math.min(0.5, normalized * WAVE_SPEED_DEFAULT));
 }
 
+function setWaveBackgroundOpacity(value) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (Number.isNaN(parsed)) return;
+  waveOpacity = Math.max(0, Math.min(1, parsed));
+}
+
 function startWaveBackgroundAnimation() {
   if (!waveCtx || !waveBackgroundColors.length || waveAnimationId) return;
   waveAnimationId = requestAnimationFrame(animateWaveBackground);
@@ -91,6 +98,11 @@ function startWaveBackgroundAnimation() {
 function animateWaveBackground(timestamp) {
   if (!waveCtx || !waveCanvas) return;
   if (!waveBackgroundColors.length) {
+    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    waveAnimationId = requestAnimationFrame(animateWaveBackground);
+    return;
+  }
+  if (waveOpacity <= 0) {
     waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
     waveAnimationId = requestAnimationFrame(animateWaveBackground);
     return;
@@ -106,7 +118,7 @@ function animateWaveBackground(timestamp) {
   wavePhase += waveSpeed * delta;
   const { width, height } = waveCanvas;
   waveCtx.clearRect(0, 0, width, height);
-  waveCtx.globalAlpha = WAVE_OPACITY;
+  waveCtx.globalAlpha = waveOpacity;
   const prevComposite = waveCtx.globalCompositeOperation;
   waveCtx.globalCompositeOperation = "destination-over";
   const spacing = height / (waveBackgroundColors.length + 1);
@@ -136,7 +148,7 @@ function animateWaveBackground(timestamp) {
       const textColor = getContrastingTextColor(color);
       waveCtx.fillStyle = textColor;
       const prevAlpha = waveCtx.globalAlpha;
-      waveCtx.globalAlpha = 0.5;
+      waveCtx.globalAlpha = 0.3;
       waveCtx.font = `bold 18px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
       waveCtx.textAlign = "center";
       waveCtx.textBaseline = "bottom";

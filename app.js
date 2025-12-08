@@ -346,7 +346,6 @@ function buildDataTypeControls() {
 
 const dataTypeControls = buildDataTypeControls();
 let showWaveLabels = true;
-let showWaveBackgrounds = true;
 const waveLabelCheckbox = document.createElement("input");
 waveLabelCheckbox.type = "checkbox";
 waveLabelCheckbox.id = "show-wave-labels";
@@ -360,20 +359,60 @@ const waveLabelToggle = el(
   waveLabelCheckbox,
   el("span", {}, "Show background labels")
 );
-const waveBackgroundCheckbox = document.createElement("input");
-waveBackgroundCheckbox.type = "checkbox";
-waveBackgroundCheckbox.id = "show-wave-background";
-waveBackgroundCheckbox.checked = showWaveBackgrounds;
-waveBackgroundCheckbox.addEventListener("change", () => {
-  showWaveBackgrounds = waveBackgroundCheckbox.checked;
-  waveLabelCheckbox.disabled = !showWaveBackgrounds;
-});
-const waveBackgroundToggle = el(
-  "label",
-  { class: "wave-background-toggle", for: "show-wave-background" },
-  waveBackgroundCheckbox,
-  "Show full background"
+const INITIAL_WAVE_OPACITY = 0.7;
+const waveOpacitySlider = document.createElement("input");
+waveOpacitySlider.type = "range";
+waveOpacitySlider.id = "wave-opacity";
+waveOpacitySlider.min = 0;
+waveOpacitySlider.max = 100;
+waveOpacitySlider.step = 1;
+const initialWaveOpacity = Math.round(INITIAL_WAVE_OPACITY * 100);
+waveOpacitySlider.value = initialWaveOpacity;
+const waveOpacityValueLabel = el(
+  "span",
+  { class: "wave-opacity-value" },
+  `${initialWaveOpacity}%`
 );
+waveOpacitySlider.addEventListener("input", () => {
+  const pct = Number(waveOpacitySlider.value);
+  waveOpacityValueLabel.textContent = `${pct}%`;
+  if (typeof setWaveBackgroundOpacity === "function") {
+    setWaveBackgroundOpacity(pct / 100);
+  }
+  updateWaveLabelToggleState();
+});
+const waveOpacityControl = el(
+  "div",
+  { class: "wave-opacity-control" },
+  el("label", { for: "wave-opacity" }, "Background opacity:"),
+  waveOpacitySlider,
+  waveOpacityValueLabel
+);
+waveOpacityControl.style.marginTop = "4px";
+
+const waveLabelArea = el("div", { class: "wave-label-area" }, waveLabelToggle);
+waveLabelArea.style.marginLeft = "0";
+waveLabelArea.style.marginTop = "8px";
+waveLabelArea.style.marginBottom = "12px";
+waveLabelToggle.style.marginLeft = "0";
+waveLabelToggle.style.display = "block";
+
+const waveToggleGroup = el(
+  "div",
+  { class: "wave-toggle-group" },
+  waveOpacityControl
+);
+waveToggleGroup.style.marginTop = "12px";
+
+if (typeof setWaveBackgroundOpacity === "function") {
+  setWaveBackgroundOpacity(initialWaveOpacity / 100);
+}
+updateWaveLabelToggleState();
+
+function updateWaveLabelToggleState() {
+  const opacityValue = Number(waveOpacitySlider.value) || 0;
+  waveLabelCheckbox.disabled = opacityValue <= 0;
+}
 
 // --- FILTER SECTION (now can safely use timeRangeControls) ---
 
@@ -383,7 +422,8 @@ const filterSection = el(
   el("h3", {}, "Filter Spotify data"),
   timeRangeControls,
   dataTypeControls,
-  el("div", { class: "wave-toggle-group" }, waveBackgroundToggle, waveLabelToggle),
+  waveToggleGroup,
+  waveLabelArea,
   el(
     "p",
     { class: "filter-hint" },
