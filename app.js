@@ -891,6 +891,7 @@ function animateVinyls(timestamp) {
   vinylCtx.clearRect(0, 0, VINYL_CANVAS_WIDTH, VINYL_CANVAS_HEIGHT);
 
   let anyHover = false;
+  const hoveredVinyls = [];
 
   vinylDrawOrder.forEach((entry) => {
     if (entry.type === "sprite") {
@@ -903,10 +904,13 @@ function animateVinyls(timestamp) {
     const vinyl = entry.vinyl;
     if (vinyl.updateHover(vinylMouse.x, vinylMouse.y)) anyHover = true;
     vinyl.update(delta);
-    vinyl.draw(vinylCtx);
+    vinyl.draw(vinylCtx, { showHud: false });
+    if (vinyl._hovered) hoveredVinyls.push(vinyl);
   });
 
   vinylCtx.canvas.style.cursor = anyHover ? "pointer" : "default";
+
+  hoveredVinyls.forEach((vinyl) => vinyl.drawHoverHud(vinylCtx));
 
   vinylAnimationId = requestAnimationFrame(animateVinyls);
 }

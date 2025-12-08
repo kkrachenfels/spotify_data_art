@@ -76,7 +76,8 @@ class Vinyl {
     }
   }
 
-  draw(ctx) {
+  draw(ctx, options = {}) {
+    const { showHud = true } = options;
     ctx.save();
     ctx.translate(this.position.x, this.position.y);
     ctx.rotate(this.rotation);
@@ -147,8 +148,17 @@ class Vinyl {
     this._drawTrackNameOnRing(ctx);
 
     // Hover HUD (counter-rotated to stay horizontal)
-    if (this._hovered) this._drawHoverHud(ctx);
+    if (showHud && this._hovered) this._drawHoverHud(ctx);
 
+    ctx.restore();
+  }
+
+  drawHoverHud(ctx) {
+    if (!this._hovered) return;
+    ctx.save();
+    ctx.translate(this.position.x, this.position.y);
+    ctx.rotate(this.rotation);
+    this._drawHoverHud(ctx);
     ctx.restore();
   }
 
