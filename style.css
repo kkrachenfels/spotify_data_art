@@ -1,0 +1,423 @@
+/* ---------- Global layout ---------- */
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+  max-width: none;
+  margin: 0;
+  padding: 32px 36px 48px;
+  background: #050505;
+  color: #fff;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  position: relative;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  background: #050505;
+  color: #fff;
+  min-height: 100%;
+  height: 100%;
+}
+
+/* Let p5 canvas still default to block */
+canvas {
+  display: block;
+}
+
+/* ---------- Text + headings ---------- */
+
+h2 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 2rem;
+}
+
+h3 {
+  margin: 20px 0 8px;
+  font-size: 1.05rem;
+}
+
+p {
+  margin: 4px 0 12px;
+}
+
+.filter-hint {
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+/* ---------- Buttons ---------- */
+
+button {
+  border: none;
+  background: #1DB954;
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  font-weight: 600;
+  box-shadow: 0 10px 25px rgba(29, 185, 84, 0.35);
+  transition: transform 0.1s ease, box-shadow 0.2s ease,
+    background 0.15s ease;
+}
+
+button:hover {
+  background: #22c55e;
+  box-shadow: 0 12px 30px rgba(29, 185, 84, 0.45);
+}
+
+button:active {
+  transform: translateY(1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+  background: rgba(29, 185, 84, 0.5);
+}
+
+/* Primary-ish buttons */
+
+#generate-spiral,
+#apply-range {
+  margin-top: 8px;
+  margin-right: 8px;
+}
+
+.compact-button {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  align-self: flex-start;
+  width: auto;
+  min-width: 0;
+}
+
+/* Time-period buttons */
+
+.time-buttons,
+.length-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.time-btn,
+.length-btn {
+  min-width: 120px;
+  justify-content: center;
+}
+
+/* Active state (Receiptify-style “selected pill”) */
+
+.time-btn.active,
+.length-btn.active {
+  background: #1DB954;
+  color: #050505;
+}
+
+/* Auth buttons */
+
+#app > button {
+  margin-right: 8px;
+  margin-top: 8px;
+}
+
+/* ---------- Select dropdown ---------- */
+
+#metric-select {
+  padding: 6px 10px;
+  font-size: 0.95rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+/* ---------- Rank filter / sliders ---------- */
+
+#rank-filter {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+}
+
+.slider-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+
+.slider-control label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.date-value {
+  font-size: 0.85rem;
+  color: #444;
+  min-width: 110px;
+}
+
+/* Range inputs */
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 210px;
+  height: 4px;
+  border-radius: 999px;
+  background: #333;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #1DB954;
+  box-shadow: 0 0 0 4px rgba(29, 185, 84, 0.2);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #1DB954;
+  border: none;
+  box-shadow: 0 0 0 4px rgba(29, 185, 84, 0.2);
+}
+
+/* Slider disabled state */
+
+input[type="range"]:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Range status text */
+
+#range-status {
+  font-size: 0.9rem;
+  margin-top: 8px;
+  color: #eee;
+}
+
+.time-range-controls {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+
+.data-type-controls {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+
+.filter-subheader {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 1);
+  margin-top: 24px;
+}
+
+.wave-label-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  margin-top: 6px;
+  cursor: pointer;
+}
+.wave-label-toggle input:disabled + span {
+  opacity: 0.5;
+}
+.wave-background-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  margin-top: 6px;
+  cursor: pointer;
+}
+.wave-toggle-group {
+  display: flex;
+  flex-direction: column;
+}
+.wave-label-toggle {
+  margin-left: 18px;
+}
+.wave-shape-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+.wave-shape-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+}
+.wave-shape-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  width: 100%;
+}
+.wave-shape-option input[type="radio"] {
+  accent-color: #1db954;
+}
+
+.time-range-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+}
+
+.time-range-option.active {
+  color: #1db954;
+  font-weight: 600;
+}
+
+.time-range-option input[type="radio"] {
+  accent-color: #1db954;
+}
+
+.wave-label-toggle input[type="checkbox"],
+.wave-background-toggle input[type="checkbox"] {
+  accent-color: #1db954;
+}
+
+.content-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 32px;
+  align-items: flex-start;
+  width: 100%;
+  flex: 1;
+  margin-top: 16px;
+}
+
+.control-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  max-width: 260px;
+  padding: 20px;
+  background: rgba(12, 12, 12, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+}
+
+.filter-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.visual-column {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+  min-height: 780px;
+}
+
+.fruit-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 12px;
+  width: 280px;
+  height: 360px;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.fruit-overlay canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  background: transparent;
+}
+
+.vinyl-panel {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  position: relative;
+}
+
+#liked-list {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 760px;
+}
+
+
+
+/* ---------- Small screen tweaks ---------- */
+
+@media (max-width: 720px) {
+  .content-layout {
+    grid-template-columns: 1fr;
+  }
+  .visual-column {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .vinyl-panel {
+    justify-content: center;
+  }
+  .fruit-overlay {
+    top: 16px;
+    left: 16px;
+  }
+  .control-column {
+    width: 100%;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 600px) {
+  #app {
+    padding: 24px 16px 32px;
+  }
+
+  .slider-control {
+    align-items: flex-start;
+  }
+
+  input[type="range"] {
+    width: 100%;
+  }
+}
