@@ -100,19 +100,17 @@ function setWaveShape(shape) {
 
 function evaluateWave(value, shape) {
   const normalizedShape = shape || waveShape;
+  const period = Math.PI * 2;
+  const phase = ((value / period) % 1 + 1) % 1;
+  const saw = phase * 2 - 1;
+  const triangle = 1 - 4 * Math.abs(phase - 0.5);
   switch (normalizedShape) {
-    case "square": {
-      const v = Math.sin(value);
-      return v > 0 ? 1 : v < 0 ? -1 : 0;
-    }
+    case "square":
+      return Math.sign(Math.sin(value)) || 0;
     case "triangle":
-      return (2 / Math.PI) * Math.asin(Math.sin(value));
-    case "saw": {
-      const period = Math.PI * 2;
-      const offset = ((value % period) + period) % period;
-      const frac = offset / period;
-      return frac * 2 - 1;
-    }
+      return triangle;
+    case "saw":
+      return saw;
     case "sine":
     default:
       return Math.sin(value);
