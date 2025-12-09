@@ -390,6 +390,40 @@ const waveOpacityControl = el(
 );
 waveOpacityControl.style.marginTop = "4px";
 
+const waveShapeOptions = [
+  { label: "Sine", value: "sine" },
+  { label: "Square", value: "square" },
+  { label: "Triangle", value: "triangle" },
+  { label: "Saw", value: "saw" },
+];
+function handleWaveShapeChange(value) {
+  if (typeof setWaveShape === "function") {
+    setWaveShape(value);
+  }
+}
+const waveShapeControls = el("div", { class: "wave-shape-controls" });
+waveShapeControls.appendChild(el("span", { class: "wave-shape-label" }, "Wave shape:"));
+waveShapeOptions.forEach((option, index) => {
+  const id = `wave-shape-${option.value}`;
+  const radio = document.createElement("input");
+  radio.type = "radio";
+  radio.name = "wave-shape";
+  radio.value = option.value;
+  radio.id = id;
+  radio.checked = option.value === "sine";
+  radio.addEventListener("change", () => {
+    if (radio.checked) handleWaveShapeChange(option.value);
+  });
+  const label = el(
+    "label",
+    { class: "wave-shape-option", for: id },
+    radio,
+    option.label
+  );
+  waveShapeControls.appendChild(label);
+});
+handleWaveShapeChange("sine");
+
 const waveLabelArea = el("div", { class: "wave-label-area" }, waveLabelToggle);
 waveLabelArea.style.marginLeft = "0";
 waveLabelArea.style.marginTop = "8px";
@@ -422,13 +456,6 @@ const filterSection = el(
   el("h3", {}, "Filter Spotify data"),
   timeRangeControls,
   dataTypeControls,
-  waveToggleGroup,
-  waveLabelArea,
-  el(
-    "p",
-    { class: "filter-hint" },
-    `Pick a time window, type of top result, and starting rank, then press "Update filter" to fetch data.`
-  ),
   el(
     "div",
     { class: "slider-control" },
@@ -436,6 +463,15 @@ const filterSection = el(
     startLabel,
     startRange
   ),
+  el(
+    "p",
+    { class: "filter-hint" },
+    `Pick a time window, type of top result, and starting rank, then press "Update filter" to fetch data.`
+  ),
+  el("h3", { class: "filter-subheader" }, "Display options"),
+  waveShapeControls,
+  waveToggleGroup,
+  waveLabelArea,
   filterButtonGroup
 );
 

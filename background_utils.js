@@ -11,6 +11,7 @@ let waveLastWaveTimestamp = null;
 let waveSpeed = WAVE_SPEED_DEFAULT;
 let waveLabels = [];
 let waveOpacity = WAVE_OPACITY;
+let waveShape = "sine";
 
 function setupWaveBackground(container) {
   stopWaveBackgroundAnimation();
@@ -90,6 +91,34 @@ function setWaveBackgroundOpacity(value) {
   waveOpacity = Math.max(0, Math.min(1, parsed));
 }
 
+function setWaveShape(shape) {
+  const allowed = ["sine", "square", "triangle", "saw"];
+  if (allowed.includes(shape)) {
+    waveShape = shape;
+  }
+}
+
+function evaluateWave(value, shape) {
+  const normalizedShape = shape || waveShape;
+  switch (normalizedShape) {
+    case "square": {
+      const v = Math.sin(value);
+      return v > 0 ? 1 : v < 0 ? -1 : 0;
+    }
+    case "triangle":
+      return (2 / Math.PI) * Math.asin(Math.sin(value));
+    case "saw": {
+      const period = Math.PI * 2;
+      const offset = ((value % period) + period) % period;
+      const frac = offset / period;
+      return frac * 2 - 1;
+    }
+    case "sine":
+    default:
+      return Math.sin(value);
+  }
+}
+
 function startWaveBackgroundAnimation() {
   if (!waveCtx || !waveBackgroundColors.length || waveAnimationId) return;
   waveAnimationId = requestAnimationFrame(animateWaveBackground);
@@ -107,11 +136,6 @@ function animateWaveBackground(timestamp) {
     waveAnimationId = requestAnimationFrame(animateWaveBackground);
     return;
   }
-  if (typeof showWaveBackgrounds === "boolean" && !showWaveBackgrounds) {
-    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
-    waveAnimationId = requestAnimationFrame(animateWaveBackground);
-    return;
-  }
   if (!waveLastWaveTimestamp) waveLastWaveTimestamp = timestamp;
   const delta = (timestamp - waveLastWaveTimestamp) / 1000;
   waveLastWaveTimestamp = timestamp;
@@ -124,10 +148,10 @@ function animateWaveBackground(timestamp) {
   const spacing = height / (waveBackgroundColors.length + 1);
   waveBackgroundColors.forEach((color, idx) => {
     const amplitude = 24 + idx * 4;
-    const centerOffset =
-      spacing * (idx + 1) + Math.sin(wavePhase * 0.8 + idx) * 12;
     const freqFactor = 1 + idx * 0.15;
     const phaseShift = wavePhase * (0.4 + idx * 0.2);
+    const centerOffset =
+      spacing * (idx + 1) + evaluateWave(wavePhase * 0.8 + idx, waveShape) * 12;
     waveCtx.fillStyle = color;
     waveCtx.beginPath();
     waveCtx.moveTo(0, 0);
@@ -135,7 +159,9 @@ function animateWaveBackground(timestamp) {
       const normalized = (x / width) * Math.PI * 2 * freqFactor;
       const y =
         centerOffset +
-        Math.sin(normalized + phaseShift) * amplitude * (1 + idx * 0.05);
+        evaluateWave(normalized + phaseShift, waveShape) *
+          amplitude *
+          (1 + idx * 0.05);
       waveCtx.lineTo(x, y);
     }
     waveCtx.lineTo(width, 0);
