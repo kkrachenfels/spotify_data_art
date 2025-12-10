@@ -120,7 +120,6 @@ Object.entries(FRUIT_ASSETS).forEach(([name, src]) => {
 });
 const FRUIT_IMAGE_VALUES = Object.values(fruitImageMap);
 
-
 const CATERPILLAR_MARGIN = 12;
 
 const CATERPILLAR_HEAD_SRC = "assets/caterpillar_head.png";
@@ -171,7 +170,9 @@ class CaterpillarSprite {
     if (!this.ready || !this.position) return;
     const useAlternate =
       this._useAlternateFrame && this._alternateImage && this._alternateReady;
-    const renderImage = useAlternate ? this._alternateImage : this._primaryImage;
+    const renderImage = useAlternate
+      ? this._alternateImage
+      : this._primaryImage;
     if (!renderImage?.complete) return;
     const { x, y } = this.position;
     ctx.save();
@@ -266,7 +267,9 @@ function updatePendingTimeRange(value) {
 function buildTimeRangeControls() {
   const container = document.createElement("div");
   container.className = "time-range-controls";
-  container.appendChild(el("span", { class: "time-range-label" }, "Time window: "));
+  container.appendChild(
+    el("span", { class: "time-range-label" }, "Time window: ")
+  );
   container.appendChild(document.createElement("br"));
 
   timeRangeOptions.forEach((option) => {
@@ -283,7 +286,8 @@ function buildTimeRangeControls() {
 
     const label = document.createElement("label");
     label.className =
-      "time-range-option" + (option.value === pendingTimeRange ? " active" : "");
+      "time-range-option" +
+      (option.value === pendingTimeRange ? " active" : "");
     label.dataset.range = option.value;
     label.htmlFor = id;
     label.style.display = "flex";
@@ -402,7 +406,9 @@ function handleWaveShapeChange(value) {
   }
 }
 const waveShapeControls = el("div", { class: "wave-shape-controls" });
-waveShapeControls.appendChild(el("span", { class: "wave-shape-label" }, "Wave shape:"));
+waveShapeControls.appendChild(
+  el("span", { class: "wave-shape-label" }, "Wave shape:")
+);
 waveShapeOptions.forEach((option, index) => {
   const id = `wave-shape-${option.value}`;
   const radio = document.createElement("input");
@@ -541,7 +547,8 @@ function applyCurrentRange() {
     currentDataType === "artists" ? "top artists" : "top tracks";
   rangeStatus.textContent = `Fetching ${loadingLabel} from Spotify...`;
   list.innerHTML = `Loading ${loadingLabel}...`;
-  const endpoint = currentDataType === "artists" ? "/top_artists" : "/top_tracks";
+  const endpoint =
+    currentDataType === "artists" ? "/top_artists" : "/top_tracks";
 
   fetch(
     `${endpoint}?offset=${offsetRank}&time_range=${encodeURIComponent(
@@ -581,7 +588,7 @@ function startEatingAnimations() {
   startFruitPlayback();
   animationsActive = true;
   eatBtn.disabled = true;
-  rangeStatus.textContent = 'Now eating the data!';
+  rangeStatus.textContent = "Now eating the data!";
 }
 
 function renderVinylScene(items) {
@@ -644,11 +651,7 @@ function renderVinylScene(items) {
     const rankStr = item?.rank ? `#${item.rank} ` : "";
     return `${rankStr}${item?.name || "Unknown Track"}`;
   });
-  console.debug(
-    "[wave labels]",
-    labelList.length,
-    labelList.slice(0, 10)
-  );
+  console.debug("[wave labels]", labelList.length, labelList.slice(0, 10));
   Promise.all(colorPromises).then((colors) => {
     updateVinylColors(colors);
     updateWavePalette(colors, labelList);
@@ -662,6 +665,7 @@ function getTrackBpmEstimate(track) {
       : typeof track?.tempo === "number"
       ? track.tempo
       : null;
+  console.log("we got the bpm from spotify api:", bpm);
   if (bpm != null) return bpm;
   const energy =
     typeof track?.energy === "number"
@@ -855,7 +859,11 @@ function initializeVinylScene(container, layout) {
       ...buttEntry.pathPoint,
       x: buttEntry.pathPoint.x,
     };
-    const pos = clampSpritePosition(buttPoint, buttSprite, buttEntry.clampMargin);
+    const pos = clampSpritePosition(
+      buttPoint,
+      buttSprite,
+      buttEntry.clampMargin
+    );
     buttSprite.position = pos || buttPoint;
   }
 
@@ -932,14 +940,15 @@ function addVinylFromEntry(entry) {
       : typeof rawAlbum === "string"
       ? rawAlbum
       : rawAlbum?.name || item?.album_name || "";
-  const title = isArtist ? item?.name || "Unknown artist" : `${rankStr}${item?.name || ""}`;
+  const title = isArtist
+    ? item?.name || "Unknown artist"
+    : `${rankStr}${item?.name || ""}`;
 
-  const bpm =
-    isArtist
-      ? null
-      : (typeof item?.bpm === "number" ? item.bpm : null) ??
-        (typeof item?.tempo === "number" ? item.tempo : null) ??
-        null;
+  const bpm = isArtist
+    ? null
+    : (typeof item?.bpm === "number" ? item.bpm : null) ??
+      (typeof item?.tempo === "number" ? item.tempo : null) ??
+      null;
 
   const derivedBpm = getTrackBpmEstimate(item);
 
@@ -948,14 +957,16 @@ function addVinylFromEntry(entry) {
     artist: isArtist ? "" : artistNames,
     album,
     bpm,
+    previewUrl: item.preview_url || item?.preview_url || null,
     spinsPerBeat: 0.05,
     hoverBpm: isArtist ? null : bpm ?? derivedBpm,
   });
 
   if (isArtist) {
-    const genresText = Array.isArray(item?.genres) && item.genres.length
-      ? item.genres.join(", ")
-      : "Unknown";
+    const genresText =
+      Array.isArray(item?.genres) && item.genres.length
+        ? item.genres.join(", ")
+        : "Unknown";
     vinyl.setHoverLinesOverride([
       `Artist: ${item?.name || "Unknown"}`,
       `Popularity: ${item?.popularity ?? "N/A"}`,
@@ -1259,8 +1270,8 @@ function spawnNextFruit() {
     image,
     120 + Math.random() * 60
   );
-  const startX = - (FRUIT_MOVE_MARGIN * 3);
-  const endX = FRUIT_CANVAS_WIDTH - (FRUIT_MOVE_MARGIN * 3);
+  const startX = -(FRUIT_MOVE_MARGIN * 3);
+  const endX = FRUIT_CANVAS_WIDTH - FRUIT_MOVE_MARGIN * 3;
   const travelDistance = Math.max(endX - startX, 0);
   fruit.position.x = startX;
   fruit.position.y = FRUIT_CANVAS_HEIGHT / 2;

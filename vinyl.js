@@ -29,6 +29,7 @@ class Vinyl {
     this.bpm = 0;
     this.hoverBpm = null;
     this.hoverLinesOverride = null;
+    this.previewUrl = null;
 
     // Hover state
     this._hovered = false;
@@ -396,11 +397,17 @@ class Vinyl {
 
   /**
    * Set title/artist/bpm (and optional spinsPerBeat) in one call.
-   * @param {{title?: string, artist?: string, bpm?: number, spinsPerBeat?: number}} meta
+   * @param {{title?: string, artist?: string, album?: string, bpm?: number, spinsPerBeat?: number, hoverBpm?: number, previewUrl?: string}} meta
    */
-  setTrackMeta(
-    { title, artist, album, bpm, spinsPerBeat = 0.05, hoverBpm } = {}
-  ) {
+  setTrackMeta({
+    title,
+    artist,
+    album,
+    bpm,
+    spinsPerBeat = 0.05,
+    hoverBpm,
+    previewUrl,
+  } = {}) {
     if (title != null) this.trackName = title;
     if (artist != null) this.artist = artist;
     if (album != null) this.album = album;
@@ -409,6 +416,10 @@ class Vinyl {
       this.hoverBpm = hoverBpm;
     } else if (bpm != null) {
       this.hoverBpm = Math.round(bpm);
+    }
+    if (previewUrl != null) {
+      console.log("Setting previewUrl:", previewUrl);
+      this.previewUrl = previewUrl;
     }
   }
 

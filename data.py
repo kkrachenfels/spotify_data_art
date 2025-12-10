@@ -79,7 +79,6 @@ def _refresh_token():
 # ---------------------- TOP TRACKS (long_term) ----------------------
 
 def _parse_top_tracks_items(items, start_rank=1, feature_map=None):
-    """Convert /me/top/tracks items to our CSV rows, assigning rank starting at start_rank."""
     rows = []
     rank = start_rank
     for it in items:
@@ -88,6 +87,7 @@ def _parse_top_tracks_items(items, start_rank=1, feature_map=None):
         album = it.get('album', {}) or {}
         images = album.get('images', [])
         album_image = images[0]['url'] if images else None
+
         rows.append({
             'rank': rank,
             'name': it.get('name'),
@@ -98,11 +98,14 @@ def _parse_top_tracks_items(items, start_rank=1, feature_map=None):
             'external_url': (it.get('external_urls') or {}).get('spotify'),
             'popularity': it.get('popularity'),
             'energy': feature.get('energy') if feature else None,
+            'tempo': feature.get('tempo') if feature else None,   # <--- BPM
+            'preview_url': it.get('preview_url'),                 # <--- 30s mp3
             'album_release_date': album.get('release_date'),
             'kind': 'track',
         })
         rank += 1
     return rows
+
 
 
 def _fetch_top_tracks_page(headers, offset, limit=50, time_range='long_term'):
