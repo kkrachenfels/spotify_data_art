@@ -77,7 +77,6 @@ def _refresh_token():
 
 
 # ---------------------- TOP TRACKS (long_term) ----------------------
-
 def _parse_top_tracks_items(items, start_rank=1, feature_map=None):
     rows = []
     rank = start_rank
@@ -98,8 +97,8 @@ def _parse_top_tracks_items(items, start_rank=1, feature_map=None):
             'external_url': (it.get('external_urls') or {}).get('spotify'),
             'popularity': it.get('popularity'),
             'energy': feature.get('energy') if feature else None,
-            'tempo': feature.get('tempo') if feature else None,   # <--- BPM
-            'preview_url': it.get('preview_url'),                 # <--- 30s mp3
+            'tempo': feature.get('tempo') if feature else None,
+            'preview_url': it.get('preview_url'),
             'album_release_date': album.get('release_date'),
             'kind': 'track',
         })
@@ -154,17 +153,270 @@ def _fetch_top_artists_page(headers, offset, limit=50, time_range='long_term'):
     return data.get('items', []), data.get('total')
 
 
-def _fetch_audio_features(headers, track_ids):
+RECCOBEATS_BASE = "https://api.reccobeats.com"
+
+def _fetch_recco_tracks_for_spotify_ids(track_ids):
+    """
+    Call ReccoBeats /v1/track with a single comma-separated ids param.
+
+    track_ids: list of Spotify track IDs (strings).
+    Returns: list of Recco track objects (what you saw under "content").
+    """
+    ids = [tid for tid in track_ids if tid]
+    if not ids:
+        return []
+
+    # This matches your working curl:
+    # ?ids=6nek1Nin9q48AVZcWs9e9D,58VTP6KnZs12PcAj5rMJ4W
+    params = {
+        "ids": ",".join(ids)
+    }
+
+    try:
+        r = requests.get(
+            f"{RECCOBEATS_BASE}/v1/track",
+            params=params,
+            headers={"Accept": "application/json"},
+            timeout=8,
+        )
+    except Exception as e:
+        print("ERROR calling ReccoBeats /v1/track:", e)
+        return []
+
+    print("DEBUG Recco /v1/track URL:", r.url, "status:", r.status_code)
+    if r.status_code != 200:
+        print("ReccoBeats /v1/track failed:", r.status_code, r.text[:300])
+        return []
+
+    try:
+        data = r.json()
+    except Exception as e:
+        print("ERROR parsing ReccoBeats /v1/track JSON:", e, "body:", r.text[:300])
+        return []
+
+    tracks = data.get("content") or []
+    if tracks:
+        try:
+            print(
+                "DEBUG Recco /v1/track first item:",
+                json.dumps(tracks[0], indent=2)[:500],
+            )
+        except Exception:
+            print("DEBUG Recco /v1/track first item (repr):", repr(tracks[0])[:500])
+
+    return tracks
+def _build_spotify_to_recco_map(spotify_ids, recco_tracks):
+    """
+    Build a mapping from Spotify track id -> Recco track id.
+
+    Uses the `href` field like:
+      "href": "https://open.spotify.com/track/6nek1Nin9q48AVZcWs9e9D"
+    and the Recco `id` field.
+    """
+    mapping = {}
+
+    # First, index all Recco tracks by Spotify ID extracted from href
+    index = {}
+
+    for t in recco_tracks:
+        if not isinstance(t, dict):
+            continue
+
+        recco_id = t.get("id")
+        href = t.get("href") or ""
+        if not recco_id or not href:
+            continue
+
+        spotify_id = None
+        if "open.spotify.com/track/" in href:
+            spotify_id = href.split("open.spotify.com/track/")[1].split("?")[0]
+        else:
+            # fallback: maybe href is just an ID or a spotify:track: string
+            if href.startswith("spotify:track:"):
+                spotify_id = href.split(":")[-1]
+            else:
+                spotify_id = href
+
+        if spotify_id:
+            index[spotify_id] = recco_id
+
+    # Build mapping only for the IDs we actually requested
+    for sid in spotify_ids:
+        rid = index.get(sid)
+        if rid:
+            mapping[sid] = rid
+
+    print("DEBUG spotify->recco mapping:", mapping)
+    return mapping
+
+RECCOBEATS_BASE = "https://api.reccobeats.com"
+
+# Simple in-memory cache: spotify_id -> { "tempo": ..., "energy": ..., "_raw": ... }
+AUDIO_FEATURE_CACHE = {}
+
+
+def _fetch_audio_features(track_ids):
+    """
+    Given a list of Spotify track IDs, fetch tempo/energy via ReccoBeats.
+
+    Steps:
+      1. Use /v1/track?ids=... to map Spotify IDs -> Recco IDs
+      2. For Recco IDs that we *don't* already have cached, call
+         /v1/track/{reccoId}/audio-features in parallel.
+      3. Return a dict keyed by spotify_id -> {tempo, energy, _raw}
+    """
     if not track_ids:
         return {}
-    params = {'ids': ','.join(track_ids[:100])}
-    r = requests.get(f"{API_BASE}/audio-features", headers=headers, params=params)
-    if r.status_code != 200:
-        print(f"Failed to fetch audio features: {r.status_code} {r.text}")
+
+    # Dedup while preserving order
+    seen = set()
+    unique_spotify_ids = []
+    for tid in track_ids:
+        if tid and tid not in seen:
+            seen.add(tid)
+            unique_spotify_ids.append(tid)
+
+    # ------------- STEP 1: use Recco /v1/track to get Recco IDs -------------
+    # Some may already be completely cached; we still need their Recco IDs
+    # but they may not show up again if we don't request them.
+    # We ask Recco about *all* track IDs, but they might return fewer.
+    params = [("ids", tid) for tid in unique_spotify_ids]
+    try:
+        r = requests.get(
+            f"{RECCOBEATS_BASE}/v1/track",
+            params=params,
+            headers={"Accept": "application/json"},
+            timeout=8,
+        )
+        print("DEBUG Recco /v1/track URL:", r.url, "status:", r.status_code)
+    except Exception as e:
+        print("ERROR calling Recco /v1/track:", e)
         return {}
-    data = r.json()
-    features = data.get('audio_features', []) or []
-    return {feat.get('id'): feat for feat in features if feat and feat.get('id')}
+
+    if r.status_code != 200:
+        print("ERROR Recco /v1/track:", r.status_code, r.text[:200])
+        return {}
+
+    try:
+        data = r.json()
+    except Exception as e:
+        print("ERROR parsing Recco /v1/track JSON:", e)
+        return {}
+
+    content = data.get("content") or []
+    if content:
+        try:
+            print("DEBUG Recco /v1/track first item:", json.dumps(content[0], indent=2)[:500])
+        except Exception:
+            pass
+
+    # Build mapping spotify_id -> recco_id (using href field)
+    spotify_to_recco = {}
+    for item in content:
+        recco_id = item.get("id")
+        href = item.get("href") or ""
+        # href looks like https://open.spotify.com/track/<spotify_id>
+        spotify_id = None
+        if "open.spotify.com/track/" in href:
+            spotify_id = href.rsplit("/", 1)[-1].split("?")[0]
+
+        if spotify_id and recco_id:
+            spotify_to_recco[spotify_id] = recco_id
+
+    print("DEBUG spotify->recco mapping:", spotify_to_recco)
+
+    # If Recco doesn't know about some tracks, that's fine – we skip them.
+    missing_spotify_ids = [
+        tid for tid in unique_spotify_ids if tid not in spotify_to_recco
+    ]
+    for tid in missing_spotify_ids:
+        print(f"DEBUG no Recco id for Spotify track {tid}")
+
+    # ------------- STEP 2: decide which tracks actually need network calls -------------
+    # We might already have cached audio features for some Spotify IDs.
+    spotify_ids_needing_fetch = []
+    for sp_id, recco_id in spotify_to_recco.items():
+        if sp_id not in AUDIO_FEATURE_CACHE:
+            spotify_ids_needing_fetch.append(sp_id)
+
+    # Edge case: everything is cached already
+    if not spotify_ids_needing_fetch:
+        print("DEBUG ReccoBeats: all requested tracks already cached")
+        # Build map from cache only for the requested track_ids
+        return {
+            tid: AUDIO_FEATURE_CACHE[tid]
+            for tid in track_ids
+            if tid in AUDIO_FEATURE_CACHE
+        }
+
+    # ------------- STEP 3: fetch /audio-features in parallel for missing ones -------------
+
+    def fetch_one_audio_features(recco_id, sp_id):
+        url = f"{RECCOBEATS_BASE}/v1/track/{recco_id}/audio-features"
+        try:
+            resp = requests.get(
+                url,
+                headers={"Accept": "application/json"},
+                timeout=5,
+            )
+        except Exception as e:
+            print(f"ERROR calling ReccoBeats audio-features for {sp_id} ({recco_id}): {e}")
+            return None
+
+        if resp.status_code != 200:
+            print(
+                f"ReccoBeats audio-features failed for {sp_id} ({recco_id}): "
+                f"{resp.status_code} {resp.text[:200]}"
+            )
+            return None
+
+        try:
+            return resp.json()
+        except Exception as e:
+            print(f"ERROR parsing ReccoBeats audio-features JSON for {sp_id}: {e}")
+            return None
+
+    # Parallel fetch
+    future_to_spotify = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        for sp_id in spotify_ids_needing_fetch:
+            recco_id = spotify_to_recco.get(sp_id)
+            if not recco_id:
+                continue
+            fut = executor.submit(fetch_one_audio_features, recco_id, sp_id)
+            future_to_spotify[fut] = sp_id
+
+        for fut in as_completed(future_to_spotify):
+            sp_id = future_to_spotify[fut]
+            result = fut.result()
+            if not result:
+                continue
+
+            # Adjust field names based on actual Recco JSON structure
+            tempo = (
+                result.get("tempo")
+                or result.get("bpm")
+                or result.get("BPM")
+            )
+            energy = (
+                result.get("energy")
+                or result.get("Energy")
+            )
+
+            AUDIO_FEATURE_CACHE[sp_id] = {
+                "tempo": tempo,
+                "energy": energy,
+                "_raw": result,
+            }
+
+    # ------------- STEP 4: build final map for *this* call only -------------
+    feature_map = {}
+    for tid in track_ids:
+        if tid in AUDIO_FEATURE_CACHE:
+            feature_map[tid] = AUDIO_FEATURE_CACHE[tid]
+
+    print("DEBUG ReccoBeats audio-features parsed count:", len(feature_map))
+    return feature_map
 
 
 @app.route('/top_tracks')
@@ -186,7 +438,7 @@ def top_tracks():
     start_rank = max(1, min(requested_start, max_start))
     spotify_offset = max(0, start_rank - 1)
 
-        # read time_range from query (?time_range=short_term|medium_term|long_term)
+    # read time_range from query (?time_range=short_term|medium_term|long_term)
     requested_time_range = request.args.get('time_range', 'long_term')
     if requested_time_range not in ('short_term', 'medium_term', 'long_term'):
         requested_time_range = 'long_term'
@@ -199,19 +451,33 @@ def top_tracks():
             limit=TOP_TRACKS_WINDOW,
             time_range=requested_time_range,
         )
+
         track_ids = [it.get('id') for it in items if it.get('id')]
-        feature_map = _fetch_audio_features(headers, track_ids)
-
+        print("DEBUG top_tracks: got", len(items), "items, first ID:", track_ids[0] if track_ids else None)
+        print("DEBUG top_tracks track_ids:", track_ids)
+        feature_map = _fetch_audio_features(track_ids)
     except Exception as err:
-        return jsonify({'error': 'spotify_api_failed', 'details': str(err)}), 500
+        print("ERROR in /top_tracks while fetching audio features:", err)
+        feature_map = {}  # gracefully fall back
 
-    rows = _parse_top_tracks_items(items, start_rank=start_rank, feature_map=feature_map)
+
+    rows = _parse_top_tracks_items(
+        items,
+        start_rank=start_rank,
+        feature_map=feature_map
+    )
+
+    # peek at the first parsed row
+    if rows:
+        print("DEBUG first top_tracks row:", json.dumps(rows[0], indent=2))
+
     return jsonify({
         'items': rows,
         'min_rank': start_rank,
         'max_rank': start_rank + len(rows) - 1,
         'total': len(rows),
     })
+
 
 
 @app.route('/top_artists')
