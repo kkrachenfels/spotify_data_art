@@ -9,7 +9,6 @@ Environment variables required:
 Run: `FLASK_APP=data.py flask run` from the `spotify_data_art` folder.
 """)
 import base64
-import csv
 import json
 import os
 import time
