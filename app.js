@@ -1273,27 +1273,24 @@ function spawnNextFruit() {
   const startX = -(FRUIT_MOVE_MARGIN * 3);
   const endX = FRUIT_CANVAS_WIDTH - FRUIT_MOVE_MARGIN * 3;
   const travelDistance = Math.max(endX - startX, 0);
+
   fruit.position.x = startX;
   fruit.position.y = FRUIT_CANVAS_HEIGHT / 2;
   fruit.setVelocity(travelDistance / FRUIT_MOVE_TIME, 0);
+
+  // TODO WE NEED TO UPDATE THE FRUIT BPM HERE BASED ON TRACK DATA
   const popularity = track.popularity ?? 75;
   const bpm = Math.max(70, Math.min(200, Math.round(popularity * 1.8)));
-  fruit.setTrackInfo(
-    `${track.rank ? `#${track.rank} ` : ""}${track.name}`,
-    bpm
-  );
-  fruit.setPulseStyle(
-    0.92,
-    1.08,
-    (fruitSpawnIndex / Math.max(fruitQueue.length, 1)) * Math.PI
-  );
+
+  fruit.setBpm(bpm);
+  fruit.setPulsePhase((fruitSpawnIndex / Math.max(fruitQueue.length, 1)) * Math.PI);
   fruitObjects.push(fruit);
   fruit.__trackIndex = trackIndex;
   fruit.__completionX = endX;
   fruit.__completionCallback = onFruitAnimationComplete;
   fruit.__completionTriggered = false;
   fruit.__shouldRemove = false;
-  // optional: no caption text
+
   fruitSpawnIndex += 1;
   if (fruitSpawnIndex >= fruitQueue.length) {
     stopFruitInterval();

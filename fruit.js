@@ -1,3 +1,10 @@
+/**
+ * Fruit class for representing a fruit image
+ * - Functions to help with animating the movement and BPM-driven pulsing
+ * - Images from the `assets/` folder are passed in from the main app.js when creating fruits
+ */
+
+
 class Fruit {
   /**
    * @param {number} x            Center x
@@ -5,24 +12,22 @@ class Fruit {
    * @param {HTMLImageElement|p5.Image} img  Fruit image
    * @param {number} baseSize     Drawn width in pixels (height auto-kept by aspect ratio)
    */
+
   constructor(x, y, img, baseSize = 160) {
     this.position = { x, y };
-    this.img = img; // HTMLImageElement or p5.Image
-    this.baseSize = baseSize; // width in px; height scales to keep aspect
-    this.age = 0; // seconds
+    this.img = img;
+    this.baseSize = baseSize;
+    this.age = 0; // seconds (since the fruit only stays on screen until 'eaten')
 
-    // motion (optional drift)
+    // motion
     this.velocity = { x: 0, y: 0 };
 
-    // pulse settings
+    // pulse settings, played around with scale/timing for values
     this.bpm = 0;
     this.pulsesPerBeat = 1; // 1 pulse per beat by default
     this.minScale = 0.84;
     this.maxScale = 1;
     this.phase = 0; // radians offset
-
-    // track meta (not displayed)
-    this.trackName = "";
   }
 
   /** Update kinematics + pulse clock */
@@ -38,6 +43,7 @@ class Fruit {
     const bps = this.bpm / 60;
     const freq = bps * this.pulsesPerBeat; // pulses per second
     // normalized osc in [0,1]
+    // we actually pulse along a sine wave for smoother animation
     const t = 0.5 * (1 + Math.sin(2 * Math.PI * freq * this.age + this.phase));
     return this.minScale + t * (this.maxScale - this.minScale);
   }
@@ -52,7 +58,7 @@ class Fruit {
     const scale = this._currentScale();
 
     // figure out final draw size keeping the image aspect ratio
-    const src = this.img.canvas || this.img; // supports p5.Image or HTMLImageElement
+    const src = this.img.canvas || this.img;
     const iw = src.width;
     const ih = src.height;
     if (!iw || !ih) return;
@@ -62,12 +68,13 @@ class Fruit {
 
     ctx.save();
     ctx.translate(this.position.x, this.position.y);
-    // center the image
+    // center the image in the fruit canvas
+    // (we overlaid the fruit canvas transparently on top of the vinyl canvas)
     ctx.drawImage(src, -drawW / 2, -drawH / 2, drawW, drawH);
     ctx.restore();
   }
 
-  /** Optional drift */
+  /** Set velocity of fruit */
   setVelocity(vx, vy) {
     this.velocity.x = vx;
     this.velocity.y = vy;
@@ -83,37 +90,9 @@ class Fruit {
     this.pulsesPerBeat = pulsesPerBeat;
   }
 
-  /**
-   * Control pulse intensity.
-   * @param {number} minScale smallest scale (e.g., 0.9)
-   * @param {number} maxScale largest scale (e.g., 1.1)
-   * @param {number} phase optional radians offset
-   */
-  setPulseStyle(minScale, maxScale, phase = 0) {
-    this.minScale = minScale;
-    this.maxScale = maxScale;
+  // initial fruit pulse/size when it's set onscreen
+  setPulsePhase(phase = 0) {
     this.phase = phase;
-  }
-
-  /** Track meta (not displayed) */
-  setTrackInfo(name, bpm, pulsesPerBeat = 1) {
-    this.trackName = name || "";
-    this.setBpm(bpm, pulsesPerBeat);
-  }
-
-  /** Swap the image (e.g., choose different fruit) */
-  setImage(img) {
-    this.img = img;
-  }
-
-  /** Convenience factory for a small preset family of fruits by name */
-  static pickImageFromMap(name, imageMap) {
-    // imageMap example: { apple: p5Image, pear: p5Image, ... }
-    // naive mapping: pick by key if exists, else first in map
-    if (!imageMap) return null;
-    if (name && imageMap[name]) return imageMap[name];
-    const first = Object.values(imageMap)[0];
-    return first || null;
   }
 }
 
