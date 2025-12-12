@@ -75,7 +75,7 @@ def _refresh_token():
     return True
 
 
-# ---------------------- TOP TRACKS (long_term) ----------------------
+# extract track data from spotify API response
 def _parse_top_tracks_items(items, start_rank=1, feature_map=None):
     rows = []
     rank = start_rank
@@ -105,7 +105,7 @@ def _parse_top_tracks_items(items, start_rank=1, feature_map=None):
     return rows
 
 
-
+# send the request to the spotify API to get the top tracks
 def _fetch_top_tracks_page(headers, offset, limit=50, time_range='long_term'):
     params = {
         'limit': limit,
@@ -120,6 +120,7 @@ def _fetch_top_tracks_page(headers, offset, limit=50, time_range='long_term'):
     return data.get('items', []), data.get('total')
 
 
+# extract artist data from spotify API response
 def _parse_top_artists_items(items, start_rank=1):
     rows = []
     rank = start_rank
@@ -138,6 +139,7 @@ def _parse_top_artists_items(items, start_rank=1):
     return rows
 
 
+# send the request to the spotify API to get the top artists
 def _fetch_top_artists_page(headers, offset, limit=50, time_range='long_term'):
     params = {
         'limit': limit,
@@ -152,11 +154,12 @@ def _fetch_top_artists_page(headers, offset, limit=50, time_range='long_term'):
     return data.get('items', []), data.get('total')
 
 
+# refer to README, we realized that spotify recently deprecated audio feature API
+# we now attempt to fetch a bpm estimate from reccobeats API
 RECCOBEATS_BASE = "https://api.reccobeats.com"
 
 # Simple in-memory cache: spotify_id -> { "tempo": ..., "energy": ..., "_raw": ... }
 AUDIO_FEATURE_CACHE = {}
-
 
 def _fetch_audio_features(track_ids):
     """
@@ -237,6 +240,7 @@ def _fetch_audio_features(track_ids):
 
     # ------------- STEP 2: decide which tracks actually need network calls -------------
     # We might already have cached audio features for some Spotify IDs.
+    # from previous queries
     spotify_ids_needing_fetch = []
     for sp_id, recco_id in spotify_to_recco.items():
         if sp_id not in AUDIO_FEATURE_CACHE:
@@ -253,7 +257,7 @@ def _fetch_audio_features(track_ids):
         }
 
     # ------------- STEP 3: fetch /audio-features in parallel for missing ones -------------
-
+    # do parallel fetch since requests can be slow
     def fetch_one_audio_features(recco_id, sp_id):
         url = f"{RECCOBEATS_BASE}/v1/track/{recco_id}/audio-features"
         try:
@@ -318,10 +322,10 @@ def _fetch_audio_features(track_ids):
         if tid in AUDIO_FEATURE_CACHE:
             feature_map[tid] = AUDIO_FEATURE_CACHE[tid]
 
-    print("DEBUG ReccoBeats audio-features parsed count:", len(feature_map))
     return feature_map
 
 
+# app route to get the top tracks
 @app.route('/top_tracks')
 def top_tracks():
     if 'access_token' not in session:
@@ -382,7 +386,7 @@ def top_tracks():
     })
 
 
-
+# app route to get the top artists
 @app.route('/top_artists')
 def top_artists():
     if 'access_token' not in session:
@@ -429,13 +433,13 @@ def top_artists():
 
 
 
-# --------------------------- routes ---------------------------
-
+# main page/view
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
 
 
+# have the user authenticate with spotify
 @app.route('/login')
 def login():
     if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
@@ -451,6 +455,7 @@ def login():
     return redirect(url)
 
 
+# handle the callback from spotify after authentication
 @app.route('/callback')
 def callback():
     code = request.args.get('code')
@@ -480,6 +485,7 @@ def callback():
     return redirect('/')
 
 
+# logout route
 @app.route('/logout')
 def logout():
     session.clear()
