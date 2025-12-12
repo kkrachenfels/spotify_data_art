@@ -1,5 +1,77 @@
-// Frontend for Spotify Top Tracks (rank-based). Keeps your Path2D + isPointInStroke spiral.
+/**
+ * app.js
+ * - Handles the overall application state and UI
+ */
 
+// defaults
+const MAX_TOP_TRACKS = 100; // max track rank to query from Spotify (we go up to top 100 tracks/artists)
+const SONG_DISPLAY_LIMIT = 10; // max number of tracks/artists to display at once
+
+// vinyl settings
+const VINYL_COUNT = SONG_DISPLAY_LIMIT;
+const VINYL_CANVAS_WIDTH = 1440;
+const VINYL_CANVAS_HEIGHT = 760;
+const VINYL_CANVAS_LEFT_PADDING = 150;
+const VINYL_OUTER_RADIUS = 68;
+const VINYL_INNER_RADIUS = 32;
+
+// fruit animation settings
+const FRUIT_CANVAS_WIDTH = 280;
+const FRUIT_CANVAS_HEIGHT = 360;
+const FRUIT_SPAWN_INTERVAL = 2000;
+const FRUIT_MOVE_TIME = 2;
+const FRUIT_MOVE_MARGIN = 24;
+const FRUIT_ASSETS = {
+  apple: "assets/caterpillar_apple.png",
+  pear: "assets/caterpillar_pear.png",
+  orange: "assets/caterpillar_orange.png",
+  grape: "assets/caterpillar_grape.png",
+  strawberry: "assets/caterpillar_strawberry.png",
+};
+const fruitImageMap = {};
+Object.entries(FRUIT_ASSETS).forEach(([name, src]) => {
+  const img = new Image();
+  img.src = src;
+  fruitImageMap[name] = img;
+});
+const FRUIT_IMAGE_VALUES = Object.values(fruitImageMap);
+
+// caterpillar sprite settings
+const CATERPILLAR_MARGIN = 12; // margin between the caterpillar and the edge of the canvas
+const CATERPILLAR_HEAD_SRC = "assets/caterpillar_head.png";
+const CATERPILLAR_HEAD_CLOSED_SRC = "assets/caterpillar_head_closed.png";
+const CATERPILLAR_BUTT_SRC = "assets/caterpillar_butt.png";
+const CATERPILLAR_HEAD_SIZE = {
+  width: VINYL_OUTER_RADIUS * 2.5,
+  height: VINYL_OUTER_RADIUS * 2.5,
+};
+const CATERPILLAR_BUTT_SIZE = {
+  width: VINYL_OUTER_RADIUS * 2.5,
+  height: VINYL_OUTER_RADIUS * 2.5,
+};
+const CATERPILLAR_CANVAS_MARGIN = VINYL_OUTER_RADIUS;
+const BUTT_ROTATION_SPEED = 0.3;
+
+// wave background settings
+const WAVE_START_OFFSET = FRUIT_CANVAS_WIDTH / 3; 
+const VINYL_CANVAS_EXTRA_WIDTH = 16;
+
+// initialize variables
+let vinylCanvas = null;
+let vinylCtx = null;
+let vinylAnimationId = null;
+let vinylObjects = [];
+let vinylDrawOrder = [];
+let pendingVinylEntries = [];
+let lastVinylIndex = -1;
+let buttSpriteVisible = false;
+let lastVinylTimestamp = null;
+let headSpriteEntry = null;
+let headVisible = false;
+let sceneReadyForPlay = false;
+let animationsActive = false;
+
+// helper function to create HTML elements
 function el(tag, props = {}, ...children) {
   const e = document.createElement(tag);
   Object.entries(props).forEach(([k, v]) => {
@@ -57,27 +129,7 @@ const startRange = el("input", {
   value: 1,
   disabled: true,
 });
-const SONG_DISPLAY_LIMIT = 10;
-// ------------ VINYL DISPLAY ------------
-const VINYL_CANVAS_WIDTH = 1440;
-const VINYL_CANVAS_HEIGHT = 760;
-const VINYL_CANVAS_LEFT_PADDING = 150;
-const VINYL_COUNT = 15;
-const VINYL_OUTER_RADIUS = 68;
-const VINYL_INNER_RADIUS = 32;
-let vinylCanvas = null;
-let vinylCtx = null;
-let vinylAnimationId = null;
-let vinylObjects = [];
-let vinylDrawOrder = [];
-let pendingVinylEntries = [];
-let lastVinylIndex = -1;
-let buttSpriteVisible = false;
-let lastVinylTimestamp = null;
-let headSpriteEntry = null;
-let headVisible = false;
-let sceneReadyForPlay = false;
-let animationsActive = false;
+
 const updateFilterBtn = el(
   "button",
   { id: "apply-range", class: "compact-button", onclick: applyCurrentRange },
@@ -99,45 +151,6 @@ const filterButtonGroup = el(
   updateFilterBtn,
   eatBtn
 );
-const MAX_TOP_TRACKS = 100;
-const FRUIT_CANVAS_WIDTH = 280;
-const FRUIT_CANVAS_HEIGHT = 360;
-const FRUIT_SPAWN_INTERVAL = 2000;
-const FRUIT_MOVE_TIME = 2;
-const FRUIT_MOVE_MARGIN = 24;
-const FRUIT_ASSETS = {
-  apple: "assets/caterpillar_apple.png",
-  pear: "assets/caterpillar_pear.png",
-  orange: "assets/caterpillar_orange.png",
-  grape: "assets/caterpillar_grape.png",
-  strawberry: "assets/caterpillar_strawberry.png",
-};
-const fruitImageMap = {};
-Object.entries(FRUIT_ASSETS).forEach(([name, src]) => {
-  const img = new Image();
-  img.src = src;
-  fruitImageMap[name] = img;
-});
-const FRUIT_IMAGE_VALUES = Object.values(fruitImageMap);
-
-const CATERPILLAR_MARGIN = 12;
-
-const CATERPILLAR_HEAD_SRC = "assets/caterpillar_head.png";
-const CATERPILLAR_HEAD_CLOSED_SRC = "assets/caterpillar_head_closed.png";
-const CATERPILLAR_BUTT_SRC = "assets/caterpillar_butt.png";
-const CATERPILLAR_HEAD_SIZE = {
-  width: VINYL_OUTER_RADIUS * 2.5,
-  height: VINYL_OUTER_RADIUS * 2.5,
-};
-const CATERPILLAR_BUTT_SIZE = {
-  width: VINYL_OUTER_RADIUS * 2.5,
-  height: VINYL_OUTER_RADIUS * 2.5,
-};
-
-const CATERPILLAR_CANVAS_MARGIN = VINYL_OUTER_RADIUS;
-const WAVE_START_OFFSET = FRUIT_CANVAS_WIDTH / 3; // + CATERPILLAR_CANVAS_MARGIN;
-const BUTT_ROTATION_SPEED = 0.3;
-const VINYL_CANVAS_EXTRA_WIDTH = 16;
 
 class CaterpillarSprite {
   constructor(src, width, height) {
