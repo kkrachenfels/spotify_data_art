@@ -86,7 +86,7 @@ let sceneReadyForPlay = false;
 let animationsActive = false;
 
 
-
+// ------------------------------------------------------------
 // helper function to create HTML elements
 function el(tag, props = {}, ...children) {
   const e = document.createElement(tag);
@@ -116,6 +116,7 @@ const waveToggleGroupContainer = document.getElementById("wave-toggle-group");
 const waveLabelAreaContainer = document.getElementById("wave-label-area");
 const fruitCanvas = document.getElementById("fruit-canvas");
 
+// button handlers
 if (loginBtn) {
   loginBtn.addEventListener("click", () => {
     window.location = "/login";
@@ -166,6 +167,7 @@ function updatePendingTimeRange(value) {
   });
 }
 
+// build time range radio controls inside the sidebar
 function buildTimeRangeControls() {
   const container = document.createElement("div");
   container.className = "time-range-controls";
@@ -217,6 +219,7 @@ function updatePendingDataType(value) {
   });
 }
 
+// build data type radio controls for tracks/artists choice
 function buildDataTypeControls() {
   const container = document.createElement("div");
   container.className = "data-type-controls";
@@ -258,7 +261,7 @@ if (dataTypeControlsContainer && builtDataTypeControls) {
   dataTypeControlsContainer.appendChild(builtDataTypeControls);
 }
 
-// wave background settings
+// setup the wave label and opacity controls
 let showWaveLabels = true;
 const waveLabelCheckbox = document.createElement("input");
 waveLabelCheckbox.type = "checkbox";
@@ -304,12 +307,14 @@ const waveOpacityControl = el(
 );
 waveOpacityControl.style.marginTop = "4px";
 
+// options for the wave background shape
 const waveShapeOptions = [
   { label: "Sine", value: "sine" },
   { label: "Square", value: "square" },
   { label: "Triangle", value: "triangle" },
   { label: "Saw", value: "saw" },
 ];
+// send the selected wave shape to the background renderer
 function handleWaveShapeChange(value) {
   if (typeof setWaveShape === "function") {
     setWaveShape(value);
@@ -362,11 +367,15 @@ if (typeof setWaveBackgroundOpacity === "function") {
 }
 updateWaveLabelToggleState();
 
+// keep track of when the label checkbox should be disabled
+// disable when background opacity is 0
 function updateWaveLabelToggleState() {
   const opacityValue = Number(waveOpacitySlider.value) || 0;
   waveLabelCheckbox.disabled = opacityValue <= 0;
 }
 
+// store mouse position relative to the vinyl canvas
+// initialize to off-screen values
 const vinylMouse = { x: -9999, y: -9999 };
 if (fruitCanvas) {
   fruitCanvas.width = FRUIT_CANVAS_WIDTH;
@@ -374,6 +383,7 @@ if (fruitCanvas) {
 }
 const fruitCtx = fruitCanvas ? fruitCanvas.getContext("2d") : null;
 
+// instantiate caterpillar head and tail sprites
 const caterpillarSprites = {
   head: new CaterpillarSprite(
     CATERPILLAR_HEAD_SRC,
@@ -389,6 +399,7 @@ const caterpillarSprites = {
 
 caterpillarSprites.head.setAlternateImage(CATERPILLAR_HEAD_CLOSED_SRC);
 
+// refresh the rank range label text
 function updateRankRangeLabel(startRank) {
   const endRank = Math.min(startRank + SONG_DISPLAY_LIMIT - 1, MAX_TOP_TRACKS);
   if (startLabel) {
@@ -396,6 +407,7 @@ function updateRankRangeLabel(startRank) {
   }
 }
 
+// fetch spotify data for the current filter range
 function applyCurrentRange() {
   const startRank = Number(startRange.value);
   const offsetRank = Math.max(
@@ -418,6 +430,8 @@ function applyCurrentRange() {
   if (list) {
     list.innerHTML = `Loading ${loadingLabel}...`;
   }
+
+  // use the top_artists and top_tracks endpoints that defined in data.py 
   const endpoint =
     currentDataType === "artists" ? "/top_artists" : "/top_tracks";
 
@@ -459,6 +473,7 @@ function applyCurrentRange() {
     });
 }
 
+// start vinyl + fruit animations
 function startEatingAnimations() {
   if (!sceneReadyForPlay || animationsActive) return;
   startVinylPlayback();
@@ -470,6 +485,7 @@ function startEatingAnimations() {
   }
 }
 
+// update the vinyl area with new data items
 function renderVinylScene(items) {
   if (list) list.innerHTML = "";
   clearCaterpillarSprites();
@@ -541,6 +557,10 @@ function renderVinylScene(items) {
   });
 }
 
+// infer a bpm if spotify did not supply one
+// update - see README/report for details 
+// we realized that spotify recently deprecated audio feature API...
+// we now attempt to fetch a bpm estimate from reccobeats API before falling back to popularity
 function getTrackBpmEstimate(track) {
   const bpm =
     typeof track?.bpm === "number"
@@ -560,6 +580,7 @@ function getTrackBpmEstimate(track) {
   return Math.max(70, estimated);
 }
 
+// normalize color input into a two-slot array
 function normalizeColorSet(set) {
   if (Array.isArray(set) && set.length) {
     const first = set[0] || DEFAULT_SWATCH_COLOR;
@@ -572,6 +593,8 @@ function normalizeColorSet(set) {
   return [DEFAULT_SWATCH_COLOR, DEFAULT_SWATCH_COLOR];
 }
 
+// compute the caterpillar layout for a given set of tracks
+// the caterpillar vinyl train is a sine wave 
 function buildVinylLayout(tracks, colorSets = []) {
   const count = tracks.length;
   const padding = VINYL_OUTER_RADIUS + 20;
@@ -652,6 +675,8 @@ function buildVinylLayout(tracks, colorSets = []) {
   const vinylEntries = entries.filter((entry) => entry.kind === "vinyl");
   return { headEntry, buttEntry, vinylEntries };
 }
+
+// safely pull artist names from various spotify payload shapes
 function getArtistNamesSafe(t) {
   const a = t?.artists;
 
@@ -683,6 +708,7 @@ function getArtistNamesSafe(t) {
   );
 }
 
+// prepare the vinyl canvas and mouse handlers
 function initializeVinylScene(container, layout) {
   stopVinylAnimation();
   vinylObjects.length = 0;
@@ -760,6 +786,7 @@ function initializeVinylScene(container, layout) {
   lastVinylTimestamp = null;
 }
 
+// redraw the current vinyl ordering
 function drawVinylSnapshot() {
   if (!vinylCtx) return;
   vinylCtx.clearRect(0, 0, VINYL_CANVAS_WIDTH, VINYL_CANVAS_HEIGHT);
@@ -772,6 +799,7 @@ function drawVinylSnapshot() {
   });
 }
 
+// start the animation loop for the vinyl train
 function startVinylPlayback() {
   if (vinylAnimationId) return;
   showHeadSprite();
@@ -779,6 +807,7 @@ function startVinylPlayback() {
   vinylAnimationId = requestAnimationFrame(animateVinyls);
 }
 
+// add the head caterpillar sprite to the draw order
 function showHeadSprite() {
   if (!headSpriteEntry || headVisible) return;
   headMouthTimer = 0;
@@ -789,6 +818,7 @@ function showHeadSprite() {
   headVisible = true;
 }
 
+// remove the head sprite once it leaves the frame
 function hideHeadSprite() {
   if (!headSpriteEntry || !headVisible) return;
   vinylDrawOrder = vinylDrawOrder.filter((entry) => entry !== headSpriteEntry);
@@ -799,6 +829,7 @@ function hideHeadSprite() {
   if (headSprite) headSprite.useAlternateFrame(false);
 }
 
+// create a vinyl object from layout entry data
 function addVinylFromEntry(entry) {
   if (!entry || entry.added) return;
   const point = entry.pathPoint || {
@@ -881,14 +912,17 @@ function addVinylFromEntry(entry) {
   }
 }
 
+// helper to add a vinyl by queue index
 function addVinylForTrackIndex(index) {
   addVinylFromEntry(pendingVinylEntries[index]);
 }
 
+// when a fruit finishes, add its vinyl counterpart
 function onFruitAnimationComplete(trackIndex) {
   addVinylForTrackIndex(trackIndex);
 }
 
+// show the rotating butt sprite at the train tail
 function showButtSprite() {
   if (buttSpriteVisible) return;
   const sprite = caterpillarSprites.butt;
@@ -898,6 +932,7 @@ function showButtSprite() {
   vinylDrawOrder.push({ type: "sprite", sprite });
 }
 
+// animation loop that renders each vinyl frame
 function animateVinyls(timestamp) {
   if (!vinylCtx) return;
   if (!lastVinylTimestamp) lastVinylTimestamp = timestamp;
@@ -933,6 +968,7 @@ function animateVinyls(timestamp) {
   vinylAnimationId = requestAnimationFrame(animateVinyls);
 }
 
+// cancel the vinyl animation loop
 function stopVinylAnimation() {
   if (vinylAnimationId) {
     cancelAnimationFrame(vinylAnimationId);
@@ -941,6 +977,7 @@ function stopVinylAnimation() {
   hideHeadSprite();
 }
 
+// toggle the caterpillar head mouth animation
 function updateHeadMouthAnimation(delta) {
   const headSprite = caterpillarSprites.head;
   if (!headSprite) return;
@@ -960,6 +997,7 @@ function updateHeadMouthAnimation(delta) {
   }
 }
 
+// refresh palette data on existing vinyls
 function updateVinylColors(colorSets) {
   if (!pendingVinylEntries.length) return;
   const normalized = (colorSets || []).map((set) => normalizeColorSet(set));
@@ -974,16 +1012,19 @@ function updateVinylColors(colorSets) {
   });
 }
 
+// reset sprite positions before rebuilding
 function clearCaterpillarSprites() {
   Object.values(caterpillarSprites).forEach((sprite) => {
     if (sprite) sprite.setPosition(null);
   });
 }
 
+// clamp a value within the given range
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+// keep sprites inside the viewable bounds
 function clampSpritePosition(point, sprite, margin = 0) {
   if (!point || !sprite) return null;
   const minX = -sprite.width / 2 + margin;
@@ -996,6 +1037,7 @@ function clampSpritePosition(point, sprite, margin = 0) {
   };
 }
 
+// sample a point along an extended sine arc path
 function sampleSineArcExtended(path, targetLength) {
   const { points } = path;
   if (!points.length) return { x: 0, y: 0 };
@@ -1019,6 +1061,7 @@ function sampleSineArcExtended(path, targetLength) {
   return offsetAlongPath(last, directionPoint, overshoot, true);
 }
 
+// move along a segment to extend the spline
 function offsetAlongPath(base, neighbor, distance, forward = true) {
   const dirX = neighbor.x - base.x;
   const dirY = neighbor.y - base.y;
@@ -1030,6 +1073,7 @@ function offsetAlongPath(base, neighbor, distance, forward = true) {
   };
 }
 
+// build the sine arc that defines the caterpillar track
 function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
   const horizontalPadding = radius + 20;
   const verticalPadding = radius + 20;
@@ -1071,6 +1115,7 @@ function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
   return { points, totalLength };
 }
 
+// sample a point along the defined sine arc
 function sampleSineArc(path, targetLength) {
   const { points } = path;
   if (!points.length) {
@@ -1095,13 +1140,14 @@ function sampleSineArc(path, targetLength) {
   return { x: last.x, y: last.y };
 }
 
-// ------------ FRUIT PREVIEW CANVAS ------------
+// pick a random fruit texture for the animation
 function pickRandomFruitImage() {
   if (!FRUIT_IMAGE_VALUES.length) return null;
   const index = Math.floor(Math.random() * FRUIT_IMAGE_VALUES.length);
   return FRUIT_IMAGE_VALUES[index];
 }
 
+// reset the fruit queue for a new bunch of tracks
 function prepareFruitSequence(tracks) {
   stopFruitInterval();
   stopFruitAnimation();
@@ -1113,6 +1159,7 @@ function prepareFruitSequence(tracks) {
     fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
 }
 
+// start spawning fruits from the queue
 function startFruitPlayback() {
   if (!fruitQueue.length) return;
   stopFruitAnimation();
@@ -1129,6 +1176,7 @@ function startFruitPlayback() {
   startFruitAnimation();
 }
 
+// clear the pending fruit animation data
 function stopFruitSequence() {
   stopFruitInterval();
   fruitObjects.length = 0;
@@ -1139,6 +1187,7 @@ function stopFruitSequence() {
     fruitCtx.clearRect(0, 0, FRUIT_CANVAS_WIDTH, FRUIT_CANVAS_HEIGHT);
 }
 
+// spawn the next fruit and set up its animation
 function spawnNextFruit() {
   if (fruitSpawnIndex >= fruitQueue.length) {
     stopFruitInterval();
@@ -1180,6 +1229,7 @@ function spawnNextFruit() {
   }
 }
 
+// stop the recurring fruit spawn timer
 function stopFruitInterval() {
   if (fruitIntervalId) {
     clearInterval(fruitIntervalId);
@@ -1187,6 +1237,7 @@ function stopFruitInterval() {
   }
 }
 
+// animation loop for the fruit canvas
 function animateFruits(timestamp) {
   if (!fruitCtx) return;
   if (!lastFruitTimestamp) lastFruitTimestamp = timestamp;
@@ -1218,11 +1269,13 @@ function animateFruits(timestamp) {
   fruitAnimationId = requestAnimationFrame(animateFruits);
 }
 
+// start the fruit animation loop
 function startFruitAnimation() {
   if (fruitAnimationId) return;
   fruitAnimationId = requestAnimationFrame(animateFruits);
 }
 
+// halt the fruit animation loop
 function stopFruitAnimation() {
   if (fruitAnimationId) {
     cancelAnimationFrame(fruitAnimationId);
@@ -1231,6 +1284,7 @@ function stopFruitAnimation() {
   lastFruitTimestamp = null;
 }
 
+// reset the slider controls to their default range
 function resetRankControls() {
   startRange.min = 1;
   const maxStart = MAX_TOP_TRACKS - SONG_DISPLAY_LIMIT + 1;
@@ -1241,6 +1295,7 @@ function resetRankControls() {
   updateRankRangeLabel(1);
 }
 
+// run initial setup once the DOM is ready
 document.addEventListener("DOMContentLoaded", () => {
   resetRankControls();
   if (rangeStatus) {
