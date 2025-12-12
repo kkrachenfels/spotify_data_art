@@ -374,12 +374,7 @@ class Vinyl {
     }
   }
 
-  /**
-   * Convenience: set both track name and bpm at once.
-   * @param {string} name
-   * @param {number} bpm
-   * @param {number} spinsPerBeat
-   */
+  // set both track name and bpm at once
   setTrackInfo(name, bpm, spinsPerBeat = 0.05) {
     this.setTrackMeta({ title: name, bpm, spinsPerBeat });
   }

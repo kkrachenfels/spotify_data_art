@@ -3,7 +3,7 @@
 Environment variables required:
 - SPOTIFY_CLIENT_ID
 - SPOTIFY_CLIENT_SECRET
-- SPOTIFY_REDIRECT_URI (optional, defaults to http://localhost:8080)
+- SPOTIFY_REDIRECT_URI (optional, defaults to http://127.0.0.1:8080)
 - FLASK_SECRET_KEY (optional)
 
 Run: `FLASK_APP=data.py flask run` from the `spotify_data_art` folder.
@@ -151,102 +151,6 @@ def _fetch_top_artists_page(headers, offset, limit=50, time_range='long_term'):
     data = r.json()
     return data.get('items', []), data.get('total')
 
-
-RECCOBEATS_BASE = "https://api.reccobeats.com"
-
-def _fetch_recco_tracks_for_spotify_ids(track_ids):
-    """
-    Call ReccoBeats /v1/track with a single comma-separated ids param.
-
-    track_ids: list of Spotify track IDs (strings).
-    Returns: list of Recco track objects (what you saw under "content").
-    """
-    ids = [tid for tid in track_ids if tid]
-    if not ids:
-        return []
-
-    # This matches your working curl:
-    # ?ids=6nek1Nin9q48AVZcWs9e9D,58VTP6KnZs12PcAj5rMJ4W
-    params = {
-        "ids": ",".join(ids)
-    }
-
-    try:
-        r = requests.get(
-            f"{RECCOBEATS_BASE}/v1/track",
-            params=params,
-            headers={"Accept": "application/json"},
-            timeout=8,
-        )
-    except Exception as e:
-        print("ERROR calling ReccoBeats /v1/track:", e)
-        return []
-
-    print("DEBUG Recco /v1/track URL:", r.url, "status:", r.status_code)
-    if r.status_code != 200:
-        print("ReccoBeats /v1/track failed:", r.status_code, r.text[:300])
-        return []
-
-    try:
-        data = r.json()
-    except Exception as e:
-        print("ERROR parsing ReccoBeats /v1/track JSON:", e, "body:", r.text[:300])
-        return []
-
-    tracks = data.get("content") or []
-    if tracks:
-        try:
-            print(
-                "DEBUG Recco /v1/track first item:",
-                json.dumps(tracks[0], indent=2)[:500],
-            )
-        except Exception:
-            print("DEBUG Recco /v1/track first item (repr):", repr(tracks[0])[:500])
-
-    return tracks
-def _build_spotify_to_recco_map(spotify_ids, recco_tracks):
-    """
-    Build a mapping from Spotify track id -> Recco track id.
-
-    Uses the `href` field like:
-      "href": "https://open.spotify.com/track/6nek1Nin9q48AVZcWs9e9D"
-    and the Recco `id` field.
-    """
-    mapping = {}
-
-    # First, index all Recco tracks by Spotify ID extracted from href
-    index = {}
-
-    for t in recco_tracks:
-        if not isinstance(t, dict):
-            continue
-
-        recco_id = t.get("id")
-        href = t.get("href") or ""
-        if not recco_id or not href:
-            continue
-
-        spotify_id = None
-        if "open.spotify.com/track/" in href:
-            spotify_id = href.split("open.spotify.com/track/")[1].split("?")[0]
-        else:
-            # fallback: maybe href is just an ID or a spotify:track: string
-            if href.startswith("spotify:track:"):
-                spotify_id = href.split(":")[-1]
-            else:
-                spotify_id = href
-
-        if spotify_id:
-            index[spotify_id] = recco_id
-
-    # Build mapping only for the IDs we actually requested
-    for sid in spotify_ids:
-        rid = index.get(sid)
-        if rid:
-            mapping[sid] = rid
-
-    print("DEBUG spotify->recco mapping:", mapping)
-    return mapping
 
 RECCOBEATS_BASE = "https://api.reccobeats.com"
 
@@ -523,35 +427,6 @@ def top_artists():
     })
 
 
-# ---------------------- LIKED SONGS (kept for /liked route) ----------------------
-
-def _parse_liked_page(data):
-    items = []
-    for it in data.get('items', []):
-        track = it.get('track', {})
-        artists = ', '.join([a.get('name') for a in track.get('artists', [])])
-        album_images = track.get('album', {}).get('images', [])
-        album_image = album_images[0]['url'] if album_images else None
-        items.append({
-            'name': track.get('name'),
-            'artists': artists,
-            'album': track.get('album', {}).get('name'),
-            'album_image': album_image,
-            'external_url': track.get('external_urls', {}).get('spotify'),
-            'added_at': it.get('added_at')
-        })
-    return items
-
-
-def _fetch_liked_page(headers, offset, limit=50):
-    params = {'limit': limit, 'offset': offset}
-    r = requests.get(f"{API_BASE}/me/tracks", headers=headers, params=params)
-    if r.status_code != 200:
-        print(f"Failed to fetch liked tracks page at offset {offset}: {r.status_code} {r.text}")
-        return [], None
-    data = r.json()
-    return _parse_liked_page(data), data.get('total')
-
 
 
 # --------------------------- routes ---------------------------
@@ -603,39 +478,6 @@ def callback():
     session['expires_at'] = time.time() + int(expires_in)
 
     return redirect('/')
-
-
-
-@app.route('/liked')
-def liked():
-    if 'access_token' not in session:
-        return jsonify({'error': 'not_authenticated'}), 401
-    if _is_token_expired():
-        if not _refresh_token():
-            return jsonify({'error': 'token_refresh_failed'}), 401
-    headers = _auth_header()
-    if not headers:
-        return jsonify({'error': 'not_authenticated'}), 401
-    params = {'limit': 10}
-    r = requests.get(f"{API_BASE}/me/tracks", headers=headers, params=params)
-    if r.status_code != 200:
-        return jsonify({'error': 'spotify_api_failed', 'details': r.text}), r.status_code
-    data = r.json()
-    items = []
-    for it in data.get('items', []):
-        track = it.get('track', {})
-        artists = ', '.join([a.get('name') for a in track.get('artists', [])])
-        album_images = track.get('album', {}).get('images', [])
-        album_image = album_images[0]['url'] if album_images else None
-        items.append({
-            'name': track.get('name'),
-            'artists': artists,
-            'album': track.get('album', {}).get('name'),
-            'album_image': album_image,
-            'external_url': track.get('external_urls', {}).get('spotify'),
-            'added_at': it.get('added_at')
-        })
-    return jsonify({'items': items})
 
 
 @app.route('/logout')

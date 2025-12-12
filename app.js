@@ -56,6 +56,10 @@ const BUTT_ROTATION_SPEED = 0.3;
 const WAVE_START_OFFSET = FRUIT_CANVAS_WIDTH / 3; 
 const VINYL_CANVAS_EXTRA_WIDTH = 16;
 
+// caterpillar head/mouth animation settings
+const HEAD_MOUTH_TOGGLE_INTERVAL = 0.35; // time interval between mouth open/close animation (seconds)
+const HEAD_CLOSED_ROTATION = -Math.PI / 12;
+
 // initialize variables
 let vinylCanvas = null;
 let vinylCtx = null;
@@ -64,12 +68,24 @@ let vinylObjects = [];
 let vinylDrawOrder = [];
 let pendingVinylEntries = [];
 let lastVinylIndex = -1;
-let buttSpriteVisible = false;
 let lastVinylTimestamp = null;
+
+let fruitQueue = [];
+let fruitSpawnIndex = 0;
+let fruitIntervalId = null;
+let fruitObjects = [];
+let fruitAnimationId = null;
+let lastFruitTimestamp = null;
+
+let buttSpriteVisible = false;
+let headMouthTimer = 0;
+let headMouthClosedFrame = false;
 let headSpriteEntry = null;
 let headVisible = false;
 let sceneReadyForPlay = false;
 let animationsActive = false;
+
+
 
 // helper function to create HTML elements
 function el(tag, props = {}, ...children) {
@@ -120,30 +136,13 @@ if (eatBtn) {
   eatBtn.addEventListener("click", startEatingAnimations);
 }
 
-const caterpillarSprites = {
-  head: new CaterpillarSprite(
-    CATERPILLAR_HEAD_SRC,
-    CATERPILLAR_HEAD_SIZE.width,
-    CATERPILLAR_HEAD_SIZE.height
-  ),
-  butt: new CaterpillarSprite(
-    CATERPILLAR_BUTT_SRC,
-    CATERPILLAR_BUTT_SIZE.width,
-    CATERPILLAR_BUTT_SIZE.height
-  ),
-};
-
-caterpillarSprites.head.setAlternateImage(CATERPILLAR_HEAD_CLOSED_SRC);
-
 if (startRange) {
   startRange.addEventListener("input", () => {
     updateRankRangeLabel(Number(startRange.value));
   });
 }
 
-// --- TIME RANGE STATE + RADIO CONTROL ---
-
-// pick your default: "short_term" | "medium_term" | "long_term"
+// filters and radio controls for querying the spotify API
 let currentTimeRange = "long_term";
 let currentDataType = "tracks";
 let pendingDataType = "tracks";
@@ -258,6 +257,8 @@ const builtDataTypeControls = buildDataTypeControls();
 if (dataTypeControlsContainer && builtDataTypeControls) {
   dataTypeControlsContainer.appendChild(builtDataTypeControls);
 }
+
+// wave background settings
 let showWaveLabels = true;
 const waveLabelCheckbox = document.createElement("input");
 waveLabelCheckbox.type = "checkbox";
@@ -372,17 +373,21 @@ if (fruitCanvas) {
   fruitCanvas.height = FRUIT_CANVAS_HEIGHT;
 }
 const fruitCtx = fruitCanvas ? fruitCanvas.getContext("2d") : null;
-let fruitQueue = [];
-let fruitSpawnIndex = 0;
-let fruitIntervalId = null;
-let fruitObjects = [];
-let fruitAnimationId = null;
-let lastFruitTimestamp = null;
-const HEAD_MOUTH_TOGGLE_INTERVAL = 0.35;
-let headMouthTimer = 0;
-let headMouthClosedFrame = false;
-const HEAD_CLOSED_ROTATION = -Math.PI / 12;
 
+const caterpillarSprites = {
+  head: new CaterpillarSprite(
+    CATERPILLAR_HEAD_SRC,
+    CATERPILLAR_HEAD_SIZE.width,
+    CATERPILLAR_HEAD_SIZE.height
+  ),
+  butt: new CaterpillarSprite(
+    CATERPILLAR_BUTT_SRC,
+    CATERPILLAR_BUTT_SIZE.width,
+    CATERPILLAR_BUTT_SIZE.height
+  ),
+};
+
+caterpillarSprites.head.setAlternateImage(CATERPILLAR_HEAD_CLOSED_SRC);
 
 function updateRankRangeLabel(startRank) {
   const endRank = Math.min(startRank + SONG_DISPLAY_LIMIT - 1, MAX_TOP_TRACKS);

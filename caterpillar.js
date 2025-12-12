@@ -18,7 +18,6 @@ class CaterpillarSprite {
     this._alternateReady = false;
     this._useAlternateFrame = false;
 
-    this._primaryImage.crossOrigin = "Anonymous";
     this._primaryImage.onload = () => {
       this.ready = true;
     };
@@ -70,7 +69,6 @@ class CaterpillarSprite {
     }
     this._alternateImage = new Image();
     this._alternateImage.src = src;
-    this._alternateImage.crossOrigin = "Anonymous";
     this._alternateReady = false;
     this._alternateImage.onload = () => {
       this._alternateReady = true;
@@ -88,4 +86,3 @@ class CaterpillarSprite {
 if (typeof window !== "undefined") {
   window.CaterpillarSprite = CaterpillarSprite;
 }
-
