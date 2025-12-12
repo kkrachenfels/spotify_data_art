@@ -85,72 +85,40 @@ function el(tag, props = {}, ...children) {
   return e;
 }
 
-const root =
-  document.getElementById("app") ||
-  (() => {
-    const d = document.createElement("div");
-    d.id = "app";
-    document.body.appendChild(d);
-    return d;
-  })();
+const loginBtn = document.getElementById("login-btn");
+const logoutBtn = document.getElementById("logout-btn");
+const list = document.getElementById("liked-list");
+const startLabel = document.getElementById("start-label");
+const startRange = document.getElementById("start-range");
+const updateFilterBtn = document.getElementById("apply-range");
+const eatBtn = document.getElementById("eat-button");
+const rangeStatus = document.getElementById("range-status");
+const timeRangeControlsContainer = document.getElementById("time-range-controls");
+const dataTypeControlsContainer = document.getElementById("data-type-controls");
+const waveShapeControlsContainer = document.getElementById("wave-shape-controls");
+const waveToggleGroupContainer = document.getElementById("wave-toggle-group");
+const waveLabelAreaContainer = document.getElementById("wave-label-area");
+const fruitCanvas = document.getElementById("fruit-canvas");
 
-const header = el("h2", {}, "Spotify: Starving Artist");
-const info = el(
-  "p",
-  {},
-  '"Login with Spotify" to connect your account, then select and "Update filter" to refresh the display.'
-);
-const loginBtn = el(
-  "button",
-  {
-    class: "compact-button auth-button",
-    onclick: () => (window.location = "/login"),
-  },
-  "Login with Spotify"
-);
-const logoutBtn = el(
-  "button",
-  {
-    class: "compact-button auth-button",
-    onclick: () => (window.location = "/logout"),
-  },
-  "Logout"
-);
+if (loginBtn) {
+  loginBtn.addEventListener("click", () => {
+    window.location = "/login";
+  });
+}
 
-const list = el("div", { id: "liked-list" });
+if (logoutBtn) {
+  logoutBtn.addEventListener("click", () => {
+    window.location = "/logout";
+  });
+}
 
-// Rank-based UI (no dates)
-const startLabel = el("span", { class: "date-value" }, "Ranks 1 - 10");
-const startRange = el("input", {
-  type: "range",
-  id: "start-range",
-  min: 1,
-  max: 1,
-  value: 1,
-  disabled: true,
-});
+if (updateFilterBtn) {
+  updateFilterBtn.addEventListener("click", applyCurrentRange);
+}
 
-const updateFilterBtn = el(
-  "button",
-  { id: "apply-range", class: "compact-button", onclick: applyCurrentRange },
-  "Update filter"
-);
-const eatBtn = el(
-  "button",
-  {
-    id: "eat-button",
-    class: "compact-button",
-    onclick: startEatingAnimations,
-    disabled: true,
-  },
-  "Eat!"
-);
-const filterButtonGroup = el(
-  "div",
-  { class: "filter-buttons" },
-  updateFilterBtn,
-  eatBtn
-);
+if (eatBtn) {
+  eatBtn.addEventListener("click", startEatingAnimations);
+}
 
 class CaterpillarSprite {
   constructor(src, width, height) {
@@ -247,9 +215,11 @@ const caterpillarSprites = {
 
 caterpillarSprites.head.setAlternateImage(CATERPILLAR_HEAD_CLOSED_SRC);
 
-startRange.addEventListener("input", () => {
-  updateRankRangeLabel(Number(startRange.value));
-});
+if (startRange) {
+  startRange.addEventListener("input", () => {
+    updateRankRangeLabel(Number(startRange.value));
+  });
+}
 
 // --- TIME RANGE STATE + RADIO CONTROL ---
 
@@ -316,7 +286,10 @@ function buildTimeRangeControls() {
   return container;
 }
 
-const timeRangeControls = buildTimeRangeControls();
+const builtTimeRangeControls = buildTimeRangeControls();
+if (timeRangeControlsContainer && builtTimeRangeControls) {
+  timeRangeControlsContainer.appendChild(builtTimeRangeControls);
+}
 
 function updatePendingDataType(value) {
   pendingDataType = value;
@@ -361,7 +334,10 @@ function buildDataTypeControls() {
   return container;
 }
 
-const dataTypeControls = buildDataTypeControls();
+const builtDataTypeControls = buildDataTypeControls();
+if (dataTypeControlsContainer && builtDataTypeControls) {
+  dataTypeControlsContainer.appendChild(builtDataTypeControls);
+}
 let showWaveLabels = true;
 const waveLabelCheckbox = document.createElement("input");
 waveLabelCheckbox.type = "checkbox";
@@ -418,10 +394,11 @@ function handleWaveShapeChange(value) {
     setWaveShape(value);
   }
 }
-const waveShapeControls = el("div", { class: "wave-shape-controls" });
-waveShapeControls.appendChild(
-  el("span", { class: "wave-shape-label" }, "Wave shape:")
-);
+if (waveShapeControlsContainer) {
+  waveShapeControlsContainer.appendChild(
+    el("span", { class: "wave-shape-label" }, "Wave shape:")
+  );
+}
 waveShapeOptions.forEach((option, index) => {
   const id = `wave-shape-${option.value}`;
   const radio = document.createElement("input");
@@ -439,23 +416,25 @@ waveShapeOptions.forEach((option, index) => {
     radio,
     option.label
   );
-  waveShapeControls.appendChild(label);
+  if (waveShapeControlsContainer) {
+    waveShapeControlsContainer.appendChild(label);
+  }
 });
 handleWaveShapeChange("sine");
 
-const waveLabelArea = el("div", { class: "wave-label-area" }, waveLabelToggle);
-waveLabelArea.style.marginLeft = "0";
-waveLabelArea.style.marginTop = "8px";
-waveLabelArea.style.marginBottom = "12px";
-waveLabelToggle.style.marginLeft = "0";
-waveLabelToggle.style.display = "block";
+if (waveLabelAreaContainer) {
+  waveLabelAreaContainer.style.marginLeft = "0";
+  waveLabelAreaContainer.style.marginTop = "8px";
+  waveLabelAreaContainer.style.marginBottom = "12px";
+  waveLabelToggle.style.marginLeft = "0";
+  waveLabelToggle.style.display = "block";
+  waveLabelAreaContainer.appendChild(waveLabelToggle);
+}
 
-const waveToggleGroup = el(
-  "div",
-  { class: "wave-toggle-group" },
-  waveOpacityControl
-);
-waveToggleGroup.style.marginTop = "12px";
+if (waveToggleGroupContainer) {
+  waveToggleGroupContainer.style.marginTop = "12px";
+  waveToggleGroupContainer.appendChild(waveOpacityControl);
+}
 
 if (typeof setWaveBackgroundOpacity === "function") {
   setWaveBackgroundOpacity(initialWaveOpacity / 100);
@@ -467,59 +446,12 @@ function updateWaveLabelToggleState() {
   waveLabelCheckbox.disabled = opacityValue <= 0;
 }
 
-// --- FILTER SECTION (now can safely use timeRangeControls) ---
-
-const filterSection = el(
-  "section",
-  { id: "date-filter" },
-  el("h3", {}, "Filter Spotify data"),
-  timeRangeControls,
-  dataTypeControls,
-  el(
-    "div",
-    { class: "slider-control" },
-    el("label", { for: "start-range" }, "Rank range:"),
-    startLabel,
-    startRange
-  ),
-  el(
-    "p",
-    { class: "filter-hint" },
-    `Pick a time window, type of top result, and starting rank, then press "Update filter" to fetch data.`
-  ),
-  el("h3", { class: "filter-subheader" }, "Display options"),
-  waveShapeControls,
-  waveToggleGroup,
-  waveLabelArea,
-  filterButtonGroup
-);
-
-const rangeStatus = el(
-  "p",
-  { id: "range-status" },
-  "Load top tracks or artists to enable the rank filter."
-);
-
-let vinylMouse = { x: -9999, y: -9999 };
-const controlsColumn = el(
-  "div",
-  { class: "control-column" },
-  filterSection,
-  rangeStatus
-);
-const fruitCanvas = document.createElement("canvas");
-fruitCanvas.width = FRUIT_CANVAS_WIDTH;
-fruitCanvas.height = FRUIT_CANVAS_HEIGHT;
-const fruitCtx = fruitCanvas.getContext("2d");
-const fruitOverlay = el("div", { class: "fruit-overlay" }, fruitCanvas);
-const vinylPanel = el("div", { class: "vinyl-panel" }, fruitOverlay, list);
-const visualColumn = el("div", { class: "visual-column" }, vinylPanel);
-const contentLayout = el(
-  "div",
-  { class: "content-layout" },
-  controlsColumn,
-  visualColumn
-);
+const vinylMouse = { x: -9999, y: -9999 };
+if (fruitCanvas) {
+  fruitCanvas.width = FRUIT_CANVAS_WIDTH;
+  fruitCanvas.height = FRUIT_CANVAS_HEIGHT;
+}
+const fruitCtx = fruitCanvas ? fruitCanvas.getContext("2d") : null;
 let fruitQueue = [];
 let fruitSpawnIndex = 0;
 let fruitIntervalId = null;
@@ -531,15 +463,12 @@ let headMouthTimer = 0;
 let headMouthClosedFrame = false;
 const HEAD_CLOSED_ROTATION = -Math.PI / 12;
 
-root.appendChild(header);
-root.appendChild(info);
-root.appendChild(loginBtn);
-root.appendChild(logoutBtn);
-root.appendChild(contentLayout);
 
 function updateRankRangeLabel(startRank) {
   const endRank = Math.min(startRank + SONG_DISPLAY_LIMIT - 1, MAX_TOP_TRACKS);
-  startLabel.textContent = `Ranks ${startRank} - ${endRank}`;
+  if (startLabel) {
+    startLabel.textContent = `Ranks ${startRank} - ${endRank}`;
+  }
 }
 
 function applyCurrentRange() {
@@ -558,8 +487,12 @@ function applyCurrentRange() {
   currentDataType = pendingDataType;
   const loadingLabel =
     currentDataType === "artists" ? "top artists" : "top tracks";
-  rangeStatus.textContent = `Fetching ${loadingLabel} from Spotify...`;
-  list.innerHTML = `Loading ${loadingLabel}...`;
+  if (rangeStatus) {
+    rangeStatus.textContent = `Fetching ${loadingLabel} from Spotify...`;
+  }
+  if (list) {
+    list.innerHTML = `Loading ${loadingLabel}...`;
+  }
   const endpoint =
     currentDataType === "artists" ? "/top_artists" : "/top_tracks";
 
@@ -582,16 +515,22 @@ function applyCurrentRange() {
       renderVinylScene(items.slice(0, shown));
       const total = items.length;
       const typeLabel = currentDataType === "artists" ? "artists" : "tracks";
-      rangeStatus.textContent = total
-        ? `Showing ${shown} ${typeLabel} starting from rank ${offsetRank}. Press "Eat!" to animate.`
-        : `No ${typeLabel} found starting at rank ${offsetRank}.`;
+      if (rangeStatus) {
+        rangeStatus.textContent = total
+          ? `Showing ${shown} ${typeLabel} starting from rank ${offsetRank}. Press "Eat!" to animate.`
+          : `No ${typeLabel} found starting at rank ${offsetRank}.`;
+      }
       updateRankRangeLabel(offsetRank);
     })
     .catch((err) => {
       const typeLabel = currentDataType === "artists" ? "artists" : "tracks";
-      list.innerHTML = `Failed to load top ${typeLabel}: ${err}`;
-      rangeStatus.textContent =
-        err.message || `Unable to load top ${typeLabel}.`;
+      if (list) {
+        list.innerHTML = `Failed to load top ${typeLabel}: ${err}`;
+      }
+      if (rangeStatus) {
+        rangeStatus.textContent =
+          err.message || `Unable to load top ${typeLabel}.`;
+      }
     });
 }
 
@@ -601,11 +540,13 @@ function startEatingAnimations() {
   startFruitPlayback();
   animationsActive = true;
   eatBtn.disabled = true;
-  rangeStatus.textContent = "Now eating the data!";
+  if (rangeStatus) {
+    rangeStatus.textContent = "Now eating the data!";
+  }
 }
 
 function renderVinylScene(items) {
-  list.innerHTML = "";
+  if (list) list.innerHTML = "";
   clearCaterpillarSprites();
   const container = el("div", { class: "vinyl-canvas-container" });
   container.style.position = "relative";
@@ -617,10 +558,14 @@ function renderVinylScene(items) {
   container.style.border = "none";
   container.style.borderRadius = "12px";
   container.style.backgroundColor = "#fff";
-  list.appendChild(container);
+  if (list) {
+    list.appendChild(container);
+  }
 
   if (!items.length) {
-    list.innerHTML = "No items in that rank range.";
+    if (list) {
+      list.innerHTML = "No items in that rank range.";
+    }
     stopFruitSequence();
     stopWaveBackgroundAnimation();
     sceneReadyForPlay = false;
@@ -1373,7 +1318,9 @@ function resetRankControls() {
 
 document.addEventListener("DOMContentLoaded", () => {
   resetRankControls();
-  rangeStatus.textContent =
-    'Rank range ready. Choose a window and click "Update filter".';
+  if (rangeStatus) {
+    rangeStatus.textContent =
+      'Rank range ready. Choose a window and click "Update filter".';
+  }
   startFruitAnimation();
 });

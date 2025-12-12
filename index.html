@@ -12,6 +12,65 @@
   </head>
 
   <body>
+    <div id="app">
+      <h2>Spotify: Starving Artist</h2>
+      <p class="app-info">
+        "Login with Spotify" to connect your account, then select and "Update filter"
+        to refresh the display.
+      </p>
+      <div class="auth-buttons">
+        <button id="login-btn" class="compact-button auth-button">
+          Login with Spotify
+        </button>
+        <button id="logout-btn" class="compact-button auth-button">
+          Logout
+        </button>
+      </div>
+      <div class="content-layout">
+        <div class="control-column">
+          <section id="date-filter">
+            <h3>Filter Spotify data</h3>
+            <div id="time-range-controls"></div>
+            <div id="data-type-controls"></div>
+            <div class="slider-control">
+              <label for="start-range">Rank range:</label>
+              <span class="date-value" id="start-label">Ranks 1 - 10</span>
+              <input
+                type="range"
+                id="start-range"
+                min="1"
+                max="1"
+                value="1"
+                disabled
+              />
+            </div>
+            <p class="filter-hint">
+              Pick a time window, type of top result, and starting rank, then press
+              "Update filter" to fetch data.
+            </p>
+            <h3 class="filter-subheader">Display options</h3>
+            <div id="wave-shape-controls" class="wave-shape-controls"></div>
+            <div id="wave-toggle-group" class="wave-toggle-group"></div>
+            <div id="wave-label-area" class="wave-label-area"></div>
+            <div class="filter-buttons">
+              <button id="apply-range" class="compact-button">Update filter</button>
+              <button id="eat-button" class="compact-button" disabled>Eat!</button>
+            </div>
+          </section>
+          <p id="range-status">
+            Load top tracks or artists to enable the rank filter.
+          </p>
+        </div>
+        <div class="visual-column">
+          <div class="vinyl-panel">
+            <div id="fruit-overlay" class="fruit-overlay">
+              <canvas id="fruit-canvas"></canvas>
+            </div>
+            <div id="liked-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script src="vinyl.js"></script>
     <script src="fruit.js"></script>
     <script src="color_utils.js"></script>
