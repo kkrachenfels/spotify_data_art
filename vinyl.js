@@ -1,4 +1,12 @@
-// vinyl.js
+/**
+ * Vinyl class representing a spinning record with track metadata.
+ * - Draws vinyl with grooves, label, and optional inner swirl
+ * - Displays track info on hover
+ * - Handles motion and rotation based on BPM
+ */
+
+
+// we just put this image behind the vinyls to give them the caterpillar spindle look
 const BUTT_IMAGE = new Image();
 BUTT_IMAGE.src = "assets/caterpillar_butt.png";
 
@@ -18,11 +26,10 @@ class Vinyl {
     this.labelColor = labelColor;
     this.innerSwirlColors = [labelColor, labelColor];
 
-    // Motion
-    this.velocity = { x: 0, y: 0 };
+    // For spinning the vinyl
     this.angularVelocity = 0; // radians per second
 
-    // Track meta
+    // Track metadata - mouse hover information
     this.trackName = "";
     this.artist = "";
     this.album = "";
@@ -40,13 +47,12 @@ class Vinyl {
    * @param {number} deltaSeconds
    */
   update(deltaSeconds) {
-    this.position.x += this.velocity.x * deltaSeconds;
-    this.position.y += this.velocity.y * deltaSeconds;
     this.rotation += this.angularVelocity * deltaSeconds;
   }
 
   /**
    * Hit-test in screen coordinates.
+   * for detecting hover-over interaction
    * @param {number} px
    * @param {number} py
    */
@@ -83,6 +89,7 @@ class Vinyl {
     ctx.translate(this.position.x, this.position.y);
     ctx.rotate(this.rotation);
 
+    // draw background caterpillar spindles behind the vinyl first
     if (BUTT_IMAGE.complete) {
       const size = this.outerRadius * 2.5;
       ctx.drawImage(BUTT_IMAGE, -size / 2, -size / 2, size, size);
@@ -104,6 +111,7 @@ class Vinyl {
     }
 
     // Inner swirl (lollipop-style spiral)
+    // this is drawn with the top 2 colors from a K-means run on the album or artist art
     const swirlRadius = this.innerRadius * 0.9;
     const colors =
       this.innerSwirlColors.length > 0
@@ -148,7 +156,7 @@ class Vinyl {
     // Track title around the ring
     this._drawTrackNameOnRing(ctx);
 
-    // Hover HUD (counter-rotated to stay horizontal)
+    // Hover HUD
     if (showHud && this._hovered) this._drawHoverHud(ctx);
 
     ctx.restore();
@@ -182,7 +190,7 @@ class Vinyl {
 
     // Text style
     const fontSize = this.outerRadius * 0.16;
-    ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    ctx.font = `${fontSize}px sans-serif`;
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -219,28 +227,25 @@ class Vinyl {
   }
 
   /**
-   * Hover info panel (title / artist / BPM), counter-rotated so it reads horizontally.
+   * Hover info panel (title / artist / BPM), reads horizontally.
    * Assumes we're already translated+rotated to the vinyl space.
    * @param {CanvasRenderingContext2D} ctx
    * @private
    */
-  /**
-   * Hover info panel (title / artist / BPM), shown to the SIDE of the record.
-   * Assumes we're already translated+rotated to the vinyl space.
-   * Counter-rotates so it reads horizontally.
-   */
   _drawHoverHud(ctx) {
-    if (this.hoverLinesOverride && this.hoverLinesOverride.length) {
-      this._drawCustomHoverLines(ctx, this.hoverLinesOverride);
-      return;
-    }
     const hoverBpm = this.hoverBpm ?? (this.bpm ? Math.round(this.bpm) : null);
-    const lines = [
+    const defaultLines = [
       this.trackName || "",
       this.artist ? `by ${this.artist}` : "",
       this.album ? `Album: ${this.album}` : "",
       hoverBpm ? `${hoverBpm} BPM` : "",
     ].filter(Boolean);
+
+    const lines =
+      this.hoverLinesOverride && this.hoverLinesOverride.length
+        ? this.hoverLinesOverride
+        : defaultLines;
+
     if (!lines.length) return;
 
     ctx.save();
@@ -249,7 +254,7 @@ class Vinyl {
 
     const pad = 10;
     const fontSize = Math.max(12, Math.floor(this.outerRadius * 0.12));
-    ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    ctx.font = `${fontSize}px sans-serif`;
     ctx.textBaseline = "top";
 
     // measure
@@ -261,14 +266,12 @@ class Vinyl {
     const boxW = w + pad * 2;
     const boxH = h + pad * 2;
 
-    // default: to the RIGHT of the record
+    // default displays the hud to the right of the vinyl
     const margin = 16;
     let x = this.outerRadius + margin; // left edge of box
     let y = -boxH / 2; // vertically centered
 
-    // --- optional auto-flip if near right canvas edge ---
-    // We can peek at canvas width from ctx.canvas; if placing at right would
-    // overflow, flip to the LEFT.
+    // flip hud to the left side of vinyl if near right canvas edge
     const canvas = ctx.canvas;
     if (canvas && typeof canvas.width === "number") {
       // transform our local (x + boxW, 0) back to canvas coords to check overflow
@@ -279,7 +282,7 @@ class Vinyl {
       }
     }
 
-    // panel
+    // hud panel with vinyl metadata, make translucent 
     ctx.fillStyle = "rgba(0,0,0,0.7)";
     this._roundedRect(ctx, x, y, boxW, boxH, 8);
     ctx.fill();
@@ -297,6 +300,7 @@ class Vinyl {
 
   /**
    * Utility: draw a rounded rectangle path.
+   * used to draw the vinyl hover panel 
    * @private
    */
   _roundedRect(ctx, x, y, w, h, r) {
@@ -314,59 +318,6 @@ class Vinyl {
     ctx.closePath();
   }
 
-  _drawCustomHoverLines(ctx, lines) {
-    ctx.save();
-    ctx.rotate(-this.rotation);
-
-    const pad = 10;
-    const fontSize = Math.max(12, Math.floor(this.outerRadius * 0.12));
-    ctx.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-    ctx.textBaseline = "top";
-
-    let w = 0;
-    for (const s of lines) w = Math.max(w, ctx.measureText(s).width);
-    const lh = fontSize * 1.2;
-    const h = lh * lines.length;
-
-    const boxW = w + pad * 2;
-    const boxH = h + pad * 2;
-
-    const margin = 16;
-    let x = this.outerRadius + margin;
-    let y = -boxH / 2;
-
-    const canvas = ctx.canvas;
-    if (canvas && typeof canvas.width === "number") {
-      const rightCanvasX = this.position.x + (x + boxW);
-      if (rightCanvasX + 8 > canvas.width) {
-        x = -(this.outerRadius + margin) - boxW;
-      }
-    }
-
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    this._roundedRect(ctx, x, y, boxW, boxH, 8);
-    ctx.fill();
-
-    ctx.fillStyle = "#fff";
-    let ty = y + pad;
-    for (const s of lines) {
-      ctx.fillText(s, x + pad, ty);
-      ty += lh;
-    }
-
-    ctx.restore();
-  }
-
-  /**
-   * Sets the drift velocity.
-   * @param {number} vx
-   * @param {number} vy
-   */
-  setVelocity(vx, vy) {
-    this.velocity.x = vx;
-    this.velocity.y = vy;
-  }
-
   /**
    * Sets rotational speed directly (radians per second).
    * @param {number} omega
@@ -378,7 +329,7 @@ class Vinyl {
   /**
    * Set BPM and derive angular velocity from it.
    * @param {number} bpm
-   * @param {number} spinsPerBeat - rotations per beat (default 0.05 = 1 rotation every 20 beats)
+   * @param {number} spinsPerBeat - rotations per beat
    */
   setBpm(bpm, spinsPerBeat = 0.05) {
     this.bpm = bpm || 0;
