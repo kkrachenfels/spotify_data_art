@@ -1074,6 +1074,7 @@ function offsetAlongPath(base, neighbor, distance, forward = true) {
 }
 
 // build the sine arc that defines the caterpillar track
+// build the sine arc that defines the caterpillar track
 function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
   const horizontalPadding = radius + 20;
   const verticalPadding = radius + 20;
@@ -1081,11 +1082,13 @@ function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
     canvasWidth - 2 * horizontalPadding - WAVE_START_OFFSET,
     0
   );
+  // width is reduced by the left padding that keeps vinyl layout centered
   const width = Math.max(baseWidth - VINYL_CANVAS_LEFT_PADDING, 0);
   const phaseShift = -Math.PI / 2;
   const bottomY = canvasHeight - verticalPadding - radius - 4;
   const topBound = verticalPadding + radius + 4;
   const verticalSpan = Math.max(bottomY - topBound, 0);
+  // clamp amplitude so the wave stays vertically within the canvas
   const effectiveAmplitude = Math.min(Math.max(amplitude, 0), verticalSpan / 2);
   const steps = 600;
   const points = [];
@@ -1098,11 +1101,12 @@ function buildSineArc(canvasWidth, canvasHeight, spacingX, amplitude, radius) {
       WAVE_START_OFFSET +
       u * width +
       VINYL_CANVAS_LEFT_PADDING;
-    // Start the wave at the bottom of the canvas and move upward from there.
+    // start the wave at the bottom and move upward through the sine curve
     const y =
       bottomY -
       effectiveAmplitude * (1 + Math.sin(phaseShift + u * Math.PI * 2));
     const point = { x, y, length: totalLength };
+    // keep a running total of the arc length for sampling later
     if (prevPoint) {
       const dx = x - prevPoint.x;
       const dy = y - prevPoint.y;
@@ -1123,11 +1127,13 @@ function sampleSineArc(path, targetLength) {
   }
   const total = path.totalLength;
   const clamped = Math.max(0, Math.min(targetLength, total));
+  // ensure we don't ask for a length outside the curve range
   if (clamped === 0) return { x: points[0].x, y: points[0].y };
   for (let i = 1; i < points.length; i += 1) {
     const prev = points[i - 1];
     const curr = points[i];
     if (curr.length >= clamped) {
+      // interpolate along the segment that contains our target length
       const segment = curr.length - prev.length;
       const ratio = segment === 0 ? 0 : (clamped - prev.length) / segment;
       return {
